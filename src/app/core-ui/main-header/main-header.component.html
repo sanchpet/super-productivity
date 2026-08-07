@@ -13,101 +13,111 @@
     class="action-nav-right"
     [class.action-nav-right--scrolls]="needsScrollFloor()"
   >
-    <div class="header-action-group primary-action-group">
-      @if (isDataLoaded() && isTimeTrackingEnabled()) {
-        <play-button
-          [currentTask]="currentTask()"
-          [currentTaskId]="currentTaskId()"
-          [currentTaskContext]="currentTaskContext()"
-          [hasTrackableTasks]="hasTrackableTasks()"
-        ></play-button>
-      }
+    <!--
+      Everything except the overflow trigger. `display: contents` normally, so
+      this box costs the row nothing; it becomes a real scroll container only
+      once the row cannot fit even its pinned actions. Keeping the trigger
+      OUTSIDE it is the point: the trigger is the only route to every demoted
+      action, so it must never be the thing that scrolls out of view — and a
+      sibling never has to be drawn on top of the buttons beside it.
+    -->
+    <div class="action-nav-scroll">
+      <div class="header-action-group primary-action-group">
+        @if (isDataLoaded() && isTimeTrackingEnabled()) {
+          <play-button
+            [currentTask]="currentTask()"
+            [currentTaskId]="currentTaskId()"
+            [currentTaskContext]="currentTaskContext()"
+            [hasTrackableTasks]="hasTrackableTasks()"
+          ></play-button>
+        }
 
-      <!-- Not gated on isDataLoaded: the shell paints before op-log hydration
+        <!-- Not gated on isDataLoaded: the shell paints before op-log hydration
            finishes, and the primary quick-capture entry point must not be
            missing for that window (#9420). No `data-slot`: this one is pinned,
            so it is never measured and never demoted. -->
-      @if (showAddTaskInline()) {
-        <button
-          emlDrop
-          (click)="layoutService.showAddTaskBar()"
-          matTooltip="{{ T.MH.ADD_NEW_TASK | translate }} {{
-            kb.addNewTask ? '[' + kb.addNewTask + ']' : ''
-          }}"
-          class="tour-addBtn"
-          color="primary"
-          mat-icon-button
-        >
-          <mat-icon>add</mat-icon>
-        </button>
-      }
-    </div>
-
-    @if (isDataLoaded()) {
-      <div class="header-action-group secondary-action-group counters-action-group">
-        <!-- Focus button: keep the entry point discoverable on desktop and mobile. -->
-        @if (isFocusButtonVisible()) {
-          <focus-button></focus-button>
-        }
-        @if (showCountersInline()) {
-          <div data-slot="counters">
-            @for (
-              simpleCounter of enabledSimpleCounters();
-              track trackById($index, simpleCounter)
-            ) {
-              @if (!simpleCounter.isHideButton) {
-                <simple-counter-button
-                  [matTooltip]="simpleCounter.title"
-                  [simpleCounter]="simpleCounter"
-                ></simple-counter-button>
-              }
-            }
-          </div>
+        @if (showAddTaskInline()) {
+          <button
+            emlDrop
+            (click)="layoutService.showAddTaskBar()"
+            matTooltip="{{ T.MH.ADD_NEW_TASK | translate }} {{
+              kb.addNewTask ? '[' + kb.addNewTask + ']' : ''
+            }}"
+            class="tour-addBtn"
+            color="primary"
+            mat-icon-button
+          >
+            <mat-icon>add</mat-icon>
+          </button>
         }
       </div>
 
-      @if (showSyncInline()) {
-        <div data-slot="sync">
-          <ng-container [ngTemplateOutlet]="syncBtnTpl"></ng-container>
+      @if (isDataLoaded()) {
+        <div class="header-action-group secondary-action-group counters-action-group">
+          <!-- Focus button: keep the entry point discoverable on desktop and mobile. -->
+          @if (isFocusButtonVisible()) {
+            <focus-button></focus-button>
+          }
+          @if (showCountersInline()) {
+            <div data-slot="counters">
+              @for (
+                simpleCounter of enabledSimpleCounters();
+                track trackById($index, simpleCounter)
+              ) {
+                @if (!simpleCounter.isHideButton) {
+                  <simple-counter-button
+                    [matTooltip]="simpleCounter.title"
+                    [simpleCounter]="simpleCounter"
+                  ></simple-counter-button>
+                }
+              }
+            </div>
+          }
         </div>
-      }
 
-      @if (showPluginBtnsInline()) {
-        <div data-slot="pluginHeader">
-          <plugin-work-context-header-btns
-            class="secondary-header-action"
-          ></plugin-work-context-header-btns>
-          <plugin-header-btns class="secondary-header-action"></plugin-header-btns>
-        </div>
-      }
+        @if (showSyncInline()) {
+          <div data-slot="sync">
+            <ng-container [ngTemplateOutlet]="syncBtnTpl"></ng-container>
+          </div>
+        }
 
-      @if (showUserProfileInline()) {
-        <div data-slot="userProfile">
-          <user-profile-button class="secondary-header-action"></user-profile-button>
-        </div>
-      }
+        @if (showPluginBtnsInline()) {
+          <div data-slot="pluginHeader">
+            <plugin-work-context-header-btns
+              class="secondary-header-action"
+            ></plugin-work-context-header-btns>
+            <plugin-header-btns class="secondary-header-action"></plugin-header-btns>
+          </div>
+        }
 
-      @if (showSidePanelBtnsInline()) {
-        <div data-slot="sidePanelBtns">
-          <plugin-side-panel-btns
-            class="secondary-header-action"
-          ></plugin-side-panel-btns>
-        </div>
-      }
+        @if (showUserProfileInline()) {
+          <div data-slot="userProfile">
+            <user-profile-button class="secondary-header-action"></user-profile-button>
+          </div>
+        }
 
-      @if (showPanelBtnsInline()) {
-        <div data-slot="panelButtons">
-          <desktop-panel-buttons
-            class="secondary-header-action"
-            [kb]="kb"
-            [isRouteWithSidePanel]="isRouteWithSidePanel()"
-            [isShowScheduleDayPanel]="isShowScheduleDayPanel()"
-            [isShowIssuePanel]="isShowIssuePanel()"
-            [isShowNotes]="isShowNotes()"
-          ></desktop-panel-buttons>
-        </div>
+        @if (showSidePanelBtnsInline()) {
+          <div data-slot="sidePanelBtns">
+            <plugin-side-panel-btns
+              class="secondary-header-action"
+            ></plugin-side-panel-btns>
+          </div>
+        }
+
+        @if (showPanelBtnsInline()) {
+          <div data-slot="panelButtons">
+            <desktop-panel-buttons
+              class="secondary-header-action"
+              [kb]="kb"
+              [isRouteWithSidePanel]="isRouteWithSidePanel()"
+              [isShowScheduleDayPanel]="isShowScheduleDayPanel()"
+              [isShowIssuePanel]="isShowIssuePanel()"
+              [isShowNotes]="isShowNotes()"
+            ></desktop-panel-buttons>
+          </div>
+        }
       }
-    }
+    </div>
 
     <!--
       While sync is demoted the trigger carries its state — conflict badge,
@@ -163,6 +173,7 @@
     [class.isVisible]="isOverflowOpen()"
     [attr.aria-hidden]="!isOverflowOpen()"
     [attr.inert]="isOverflowOpen() ? null : ''"
+    (click)="onDemotedActionClick($event)"
   >
     @if (isDemotedPluginBtns()) {
       <plugin-work-context-header-btns></plugin-work-context-header-btns>

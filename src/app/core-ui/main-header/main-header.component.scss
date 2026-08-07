@@ -8,9 +8,11 @@
   user-select: none;
   // The row's own width is what its contents have to fit into — not the
   // window's, which the side nav and the right panel both narrow away from
-  // (#9480). Named so `page-title` can size its floor against this box and not
-  // against the `main-content` container declared on `.route-wrapper`.
-  // `inline-size` only: the header's height still comes from its contents.
+  // (#9480). Named rather than anonymous so a child states which box it means.
+  // `inline-size` only: the header's height still comes from its contents, and
+  // inline-size containment is also what guarantees a child's container-driven
+  // width can never feed back into the header's own — so `_reflow` cannot
+  // oscillate against it.
   container: main-header / inline-size;
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
@@ -44,10 +46,14 @@
 // ...but the controls sit in the top-right corner of the WINDOW, and with the
 // right panel open that corner belongs to the panel, not the header. Reserving
 // room for them here then costs the action row ~140px it does not owe — enough,
-// measured against the real CSS, to squeeze the whole row down to a few pixels
-// and take every header action with it, overflow trigger included. The panel's
-// own minimum width (250px, RIGHT_PANEL_CONFIG.MIN_WIDTH) is wider than the
-// entire overlay band, so when it is open the header never reaches the controls.
+// measured, to squeeze the whole row down to a few pixels and take every header
+// action with it, overflow trigger included.
+//
+// The panel is normally far wider than the overlay band, so the header does not
+// reach the controls while it is open. Two edges this does not cover, both
+// transient or cosmetic rather than trapping: the band is briefly uncovered
+// while the panel animates open, and `.side` is additionally capped at 50% of
+// the content area, so a very narrow window can render it under the band.
 :host-context(.isNoMac.isObsidianStyleHeader.isElectron):host-context(
   right-panel.isOpen
 ) {
@@ -213,8 +219,11 @@ button.isActive2 {
   // Not applied to the teleported vertical strip — it is a fixed-width column
   // that sets its own `overflow: visible` so the current-task flyout can escape.
   &:not(.action-nav-right--teleported) {
-    // Buttons keep their size and let the row scroll instead.
-    > * {
+    // Buttons keep their size and let the row scroll instead. One level deeper
+    // than it used to be: everything but the trigger sits inside
+    // `.action-nav-scroll` now.
+    > .action-nav-scroll > *,
+    > .header-overflow-btn {
       flex-shrink: 0;
     }
 
@@ -227,7 +236,16 @@ button.isActive2 {
     // always-on floor did not merely hide the pill, it made it unreachable.
     // Making the clip conditional keeps the fallback for the state that needs
     // it and gives every other state its ink back.
-    &.action-nav-right--scrolls {
+    //
+    // The clip is on `.action-nav-scroll`, never on the nav, so the overflow
+    // trigger stays outside it: it is the only route to every demoted action,
+    // so it must not be the button that scrolls away — and being a sibling, it
+    // never has to be painted on top of the buttons it sits beside.
+    &.action-nav-right--scrolls > .action-nav-scroll {
+      display: flex;
+      align-items: center;
+      gap: var(--header-nav-button-gap);
+      min-width: 0;
       overflow-x: auto;
       // `overflow-x: auto` forces `overflow-y` to compute to `auto` (the two
       // axes are coupled). Pin it to `hidden` so no stray vertical scrollbar
@@ -239,9 +257,8 @@ button.isActive2 {
       // Block padding is cancelled by a negative margin, so the row's own box
       // is unchanged. The start padding is not: that side carries
       // `margin-left: auto`, which absorbs the 8px instead, so no button
-      // moves. It costs `nav.scrollWidth` (the fit measure in `_reflow`) 8px
-      // in this state only, which errs towards staying scrollable rather than
-      // towards clipping.
+      // moves. It costs the fit measure in `_reflow` 8px in this state only,
+      // which errs towards staying scrollable rather than towards clipping.
       overflow-y: hidden;
       padding-block: 8px;
       padding-inline-start: 8px;
@@ -250,36 +267,6 @@ button.isActive2 {
 
       &::-webkit-scrollbar {
         display: none;
-      }
-
-      // The trigger is the last child of the row, so at `scrollLeft: 0` — with
-      // the scrollbar hidden above — it is exactly the button that sits outside
-      // the scrollport, and it is the only route to everything already demoted.
-      // Losing it loses the actions twice over. Pin it to the scrollport's
-      // inline end so the row scrolls *under* it instead of past it; that
-      // motion is also the only affordance left saying the row scrolls at all.
-      .header-overflow-btn {
-        position: sticky;
-        inset-inline-end: 0;
-        z-index: 1;
-
-        // Opaque backdrop, or a button sliding underneath reads as a second
-        // icon stacked on the trigger. A rectangle covering the row's full
-        // height (the negative block insets cancel the bleed padding above),
-        // not the button's own round background, which would read as a toggled
-        // state. `::after`, not `::before`: Material draws the focus ring there,
-        // and `z-index: -1` keeps this behind both the glyph and the conflict
-        // badge. `var(--bg)` is the surface behind the header; on a theme with a
-        // background image it shows as a small chip, which is the cost of the
-        // trigger staying reachable in a state that is already degraded.
-        &::after {
-          content: '';
-          position: absolute;
-          inset-block: -8px;
-          inset-inline: 0;
-          background: var(--bg);
-          z-index: -1;
-        }
       }
     }
   }
@@ -311,6 +298,13 @@ button.isActive2 {
 
 page-title {
   position: relative;
+}
+
+// Costs the row nothing until the scroll floor turns it into a real box (see
+// `.action-nav-right--scrolls` above), so the ordinary row lays its groups out
+// exactly as it did before this box existed.
+.action-nav-scroll {
+  display: contents;
 }
 
 // Wrappers around each demotable action. They exist to be measured — the

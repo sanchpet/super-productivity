@@ -449,6 +449,25 @@ export class MainHeaderComponent implements OnDestroy {
     this.isOverflowOpen.update((v) => !v);
   }
 
+  /**
+   * A demoted action behaves like a menu item: using it dismisses the panel,
+   * the same way picking anything from a `mat-menu` closes it. Without this the
+   * panel stays open over the content after every tap.
+   *
+   * Except when the control opens something of its own — `user-profile-button`
+   * is a menu trigger, and closing here would apply `inert` to the subtree its
+   * menu restores focus into, dropping focus to `<body>`. That is the same case
+   * `_isInsidePanel` already keeps the panel open for.
+   */
+  onDemotedActionClick(ev: Event): void {
+    const target = ev.target instanceof Element ? ev.target : null;
+    const control = target?.closest('button, a');
+    if (!control || control.closest('[aria-haspopup]')) {
+      return;
+    }
+    this._closeOverflow(true);
+  }
+
   constructor() {
     // Teleport the action nav to document.body (and back) so the fixed
     // vertical strip escapes any ancestor containing-block
@@ -671,13 +690,24 @@ export class MainHeaderComponent implements OnDestroy {
     }
   }
 
-  /** Border-box width plus horizontal margins — what the row actually owes. */
+  /**
+   * Border-box width plus horizontal margins — what the title's action box
+   * actually costs the row. The other measurements here read plain rects
+   * because nothing else in the row carries margins; the nav spaces itself with
+   * `gap`.
+   *
+   * A `display: none` box has no rect but still reports its margins, and this
+   * one's happen to sum to +8 — so the narrow breakpoint that hides it would
+   * otherwise leave the fit paying for a box that is not there.
+   */
   private _outerWidth(el: HTMLElement): number {
+    const rect = el.getBoundingClientRect();
+    if (!rect.width && !rect.height) {
+      return 0;
+    }
     const s = getComputedStyle(el);
     return (
-      el.getBoundingClientRect().width +
-      (parseFloat(s.marginLeft) || 0) +
-      (parseFloat(s.marginRight) || 0)
+      rect.width + (parseFloat(s.marginLeft) || 0) + (parseFloat(s.marginRight) || 0)
     );
   }
 
@@ -693,16 +723,25 @@ export class MainHeaderComponent implements OnDestroy {
    * reading it alone made the fit model silently blind in exactly the state
    * that has to decide whether to engage the floor at all.
    *
-   * The children are the stable answer: they never shrink (`flex-shrink: 0`),
-   * so the span from the leftmost to the rightmost is what the row is asking
-   * for in every state — while scrolled, while clamped, in LTR and in RTL.
-   * Zero-area children (an unpopulated slot, or anything `display: contents`)
-   * are skipped rather than dragging the span to the viewport origin.
+   * The actions are the stable answer: they never shrink (`flex-shrink: 0`), so
+   * the span from the leftmost to the rightmost is what the row is asking for
+   * while clamped, in LTR and in RTL. Zero-area elements (an unpopulated slot,
+   * or anything `display: contents`) are skipped rather than dragging the span
+   * to the viewport origin.
+   *
+   * The one state the span cannot answer is a scrolled `.action-nav-scroll`:
+   * its children are translated by `scrollLeft`, so the span collapses by
+   * exactly the amount that is hidden. Its own `scrollWidth` is the term that
+   * survives that — and it is also the one that includes the bleed padding the
+   * floor adds. The trigger lives outside that box, so it is added separately,
+   * with the gap between the two.
    */
   private _intrinsicNavWidth(nav: HTMLElement): number {
+    const scroller = nav.querySelector<HTMLElement>(':scope > .action-nav-scroll');
+    const actions = scroller ? Array.from(scroller.children) : [];
     let left = Infinity;
     let right = -Infinity;
-    for (const kid of Array.from(nav.children)) {
+    for (const kid of actions) {
       const r = kid.getBoundingClientRect();
       if (!r.width && !r.height) {
         continue;
@@ -710,9 +749,17 @@ export class MainHeaderComponent implements OnDestroy {
       left = Math.min(left, r.left);
       right = Math.max(right, r.right);
     }
-    // `scrollWidth` still counts, because it is the one that includes the nav's
-    // own padding — the bleed the floor adds.
-    return Math.max(nav.scrollWidth, right > left ? right - left : 0);
+    const actionsW = Math.max(
+      scroller?.scrollWidth ?? 0,
+      right > left ? right - left : 0,
+    );
+
+    const trigger = nav.querySelector<HTMLElement>(':scope > .header-overflow-btn');
+    if (!trigger) {
+      return actionsW;
+    }
+    const gap = actionsW ? parseFloat(getComputedStyle(nav).columnGap) || 0 : 0;
+    return actionsW + gap + trigger.getBoundingClientRect().width;
   }
 
   /**
@@ -767,6 +814,15 @@ export class MainHeaderComponent implements OnDestroy {
       } else if (widened) {
         this._scheduleReoffer();
       } else {
+        // A pending re-offer was scheduled against a width that no longer
+        // exists, and running it would re-derive the whole row from zero — the
+        // expensive direction, mid-resize. It is not hypothetical: the panel's
+        // slide starts with one widening delivery (the Electron window-controls
+        // reserve drops the instant the panel opens) followed by a run of
+        // narrowing frames, so the timer would fire inside the animation and
+        // rebuild every demoted component, restarting the countdown a demoted
+        // `simple-counter-button` owns.
+        this._cancelReoffer();
         this._restartReflow(false);
       }
     });
@@ -779,13 +835,18 @@ export class MainHeaderComponent implements OnDestroy {
    * instead of one per frame.
    */
   private _scheduleReoffer(): void {
-    if (this._reofferTimeout !== undefined) {
-      clearTimeout(this._reofferTimeout);
-    }
+    this._cancelReoffer();
     this._reofferTimeout = setTimeout(() => {
       this._reofferTimeout = undefined;
       this._restartReflow(true);
     }, REOFFER_DELAY_MS);
+  }
+
+  private _cancelReoffer(): void {
+    if (this._reofferTimeout !== undefined) {
+      clearTimeout(this._reofferTimeout);
+      this._reofferTimeout = undefined;
+    }
   }
 
   private _syncTeleport(enabled: boolean): void {
@@ -842,10 +903,7 @@ export class MainHeaderComponent implements OnDestroy {
       cancelAnimationFrame(this._rafId);
       this._rafId = 0;
     }
-    if (this._reofferTimeout !== undefined) {
-      clearTimeout(this._reofferTimeout);
-      this._reofferTimeout = undefined;
-    }
+    this._cancelReoffer();
     this._teleportObserver?.disconnect();
     this._teleportedNav?.remove();
     this._teleportedNav = null;

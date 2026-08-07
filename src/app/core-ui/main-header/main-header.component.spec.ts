@@ -120,14 +120,20 @@ class HeaderLayoutHostComponent {
       </div>
 
       <nav class="action-nav-right action-nav-right--scrolls">
-        <button
-          type="button"
-          style="flex-shrink: 0; width: 40px; height: 40px"
-        ></button>
-        <button
-          type="button"
-          style="flex-shrink: 0; width: 40px; height: 40px"
-        ></button>
+        <div class="action-nav-scroll">
+          <button
+            type="button"
+            style="width: 40px; height: 40px"
+          ></button>
+          <button
+            type="button"
+            style="width: 40px; height: 40px"
+          ></button>
+          <button
+            type="button"
+            style="width: 40px; height: 40px"
+          ></button>
+        </div>
         <button
           type="button"
           class="header-overflow-btn"
@@ -170,10 +176,11 @@ describe('MainHeaderComponent layout', () => {
   });
 
   // The scroll floor only keeps a button reachable if it is reachable at the
-  // scroll position the user is actually left at. The trigger is the row's last
-  // child, so at `scrollLeft: 0` -- where the row starts, and where it stays,
-  // because the floor hides the scrollbar -- it was the one button outside the
-  // scrollport, and it is the only route to everything already demoted.
+  // scroll position the user is actually left at. The trigger used to be the
+  // row's last child, so at `scrollLeft: 0` -- where the row starts, and where
+  // it stays, because the floor hides the scrollbar -- it was the one button
+  // outside the scrollport, and it is the only route to everything demoted.
+  // Now it sits outside the scrolling box entirely.
   it('keeps the overflow trigger in view at rest while the row scrolls (#9480)', () => {
     const fixture = TestBed.createComponent(PinnedOverflowHostComponent);
     document.body.appendChild(fixture.nativeElement);
@@ -181,31 +188,63 @@ describe('MainHeaderComponent layout', () => {
       fixture.detectChanges();
 
       const nav = fixture.nativeElement.querySelector('.action-nav-right') as HTMLElement;
+      const scroller = fixture.nativeElement.querySelector(
+        '.action-nav-scroll',
+      ) as HTMLElement;
       const trigger = fixture.nativeElement.querySelector(
         '.header-overflow-btn',
       ) as HTMLElement;
 
       // Precondition: the row genuinely overflows, so the trigger is not
       // trivially in view.
-      expect(nav.scrollWidth).toBeGreaterThan(nav.clientWidth);
-      expect(nav.scrollLeft).toBe(0);
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+      expect(scroller.scrollLeft).toBe(0);
 
       const navRect = nav.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
       expect(triggerRect.right).toBeLessThanOrEqual(navRect.right + 0.5);
       expect(triggerRect.left).toBeGreaterThanOrEqual(navRect.left - 0.5);
+      // The whole button, not a sliver of one.
+      expect(triggerRect.width).toBeGreaterThanOrEqual(40);
+    } finally {
+      document.body.removeChild(fixture.nativeElement);
+    }
+  });
+
+  // The trigger must not solve its own visibility by covering its neighbours:
+  // it is a sibling of the scrolling box, so the actions scroll beside it, not
+  // underneath it.
+  it('never paints the overflow trigger over the actions beside it', () => {
+    const fixture = TestBed.createComponent(PinnedOverflowHostComponent);
+    document.body.appendChild(fixture.nativeElement);
+    try {
+      fixture.detectChanges();
+
+      const scroller = fixture.nativeElement.querySelector(
+        '.action-nav-scroll',
+      ) as HTMLElement;
+      const trigger = fixture.nativeElement.querySelector(
+        '.header-overflow-btn',
+      ) as HTMLElement;
+
+      const scrollerRect = scroller.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      // Disjoint boxes: the trigger starts where the scrolling region ends.
+      expect(triggerRect.left).toBeGreaterThanOrEqual(scrollerRect.right - 0.5);
     } finally {
       document.body.removeChild(fixture.nativeElement);
     }
   });
 
   it('drops the window-controls reserve while the right panel is open', () => {
+    // Setup inside the `try`: these body classes gate real CSS, so leaking them
+    // on a throw would silently apply a 140px reserve to every later fixture.
     const panel = document.createElement('right-panel');
-    document.body.appendChild(panel);
-    document.body.classList.add(...WINDOW_CONTROL_BODY_CLASSES);
-    const fixture = TestBed.createComponent(WindowControlsHostComponent);
-    panel.appendChild(fixture.nativeElement);
     try {
+      document.body.appendChild(panel);
+      document.body.classList.add(...WINDOW_CONTROL_BODY_CLASSES);
+      const fixture = TestBed.createComponent(WindowControlsHostComponent);
+      panel.appendChild(fixture.nativeElement);
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
 
@@ -216,7 +255,7 @@ describe('MainHeaderComponent layout', () => {
       expect(parseFloat(getComputedStyle(host).paddingRight)).toBe(0);
     } finally {
       document.body.classList.remove(...WINDOW_CONTROL_BODY_CLASSES);
-      document.body.removeChild(panel);
+      panel.remove();
     }
   });
 
@@ -228,27 +267,23 @@ describe('MainHeaderComponent layout', () => {
 
       const wrapper = fixture.nativeElement.querySelector('.wrapper') as HTMLElement;
       const nav = fixture.nativeElement.querySelector('.action-nav-right') as HTMLElement;
-      const trigger = fixture.nativeElement.querySelector(
-        '.header-overflow-btn',
+      const scroller = fixture.nativeElement.querySelector(
+        '.action-nav-scroll',
       ) as HTMLElement;
 
       // Precondition: the row genuinely cannot fit its pinned actions, so this
       // is the unfixable-by-demotion case and not a trivially passing setup.
-      expect(nav.scrollWidth).toBeGreaterThan(nav.clientWidth);
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
 
-      // The nav stays inside the clip edge instead of spilling past it...
+      // The nav stays inside the clip edge instead of spilling past it, and the
+      // actions really are scrollable rather than merely clipped.
       expect(nav.getBoundingClientRect().right).toBeLessThanOrEqual(
         wrapper.getBoundingClientRect().right + 0.5,
       );
-      // ...and the last pinned action -- the trigger, which is the only route
-      // to everything already demoted -- can actually be scrolled into view.
-      nav.scrollLeft = nav.scrollWidth;
-      expect(nav.scrollLeft).toBeGreaterThan(0);
-
-      const navRect = nav.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
-      expect(triggerRect.right).toBeLessThanOrEqual(navRect.right + 0.5);
-      expect(triggerRect.left).toBeGreaterThanOrEqual(navRect.left - 0.5);
+      scroller.scrollLeft = scroller.scrollWidth;
+      expect(scroller.scrollLeft).toBeGreaterThan(0);
+      // Whether the trigger is reachable is the tests above's job -- it is
+      // outside this box, so asserting it here could no longer fail.
     } finally {
       document.body.removeChild(fixture.nativeElement);
     }
@@ -717,9 +752,14 @@ describe('MainHeaderComponent focus button visibility', () => {
     // the pill, it deleted it.
     const host = await mountAtWidth(1400);
     const nav = host.querySelector('nav.action-nav-right') as HTMLElement;
+    const scroller = host.querySelector('.action-nav-scroll') as HTMLElement;
 
     expect(nav.classList.contains('action-nav-right--scrolls')).toBe(false);
+    // The clip lives on the inner box (so the overflow trigger, its sibling,
+    // can never be the button that scrolls away), and that box is not even a
+    // box until the floor engages.
     expect(getComputedStyle(nav).overflowX).toBe('visible');
+    expect(getComputedStyle(scroller).display).toBe('contents');
   });
 
   it('engages the scroll floor when even the pinned actions do not fit (#9480)', async () => {
@@ -732,10 +772,14 @@ describe('MainHeaderComponent focus button visibility', () => {
         `.primary-action-group{min-width:400px !important}`,
     );
     const nav = host.querySelector('nav.action-nav-right') as HTMLElement;
+    const scroller = host.querySelector('.action-nav-scroll') as HTMLElement;
 
     expect(host.querySelector('[data-slot="sync"]')).toBeFalsy();
     expect(nav.classList.contains('action-nav-right--scrolls')).toBe(true);
-    expect(getComputedStyle(nav).overflowX).toBe('auto');
+    // The actions scroll; the nav itself does not, so the overflow trigger it
+    // holds beside them stays put.
+    expect(getComputedStyle(scroller).overflowX).toBe('auto');
+    expect(getComputedStyle(nav).overflowX).toBe('visible');
   });
 
   it('keeps the add-task button in the bar at any width (#9480)', async () => {

@@ -151,21 +151,27 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         @media (min-width: 600px) {
           padding-left: 0;
           padding-right: var(--s);
+
+          /* The roomier floor, but only where the row can afford it — and the
+             row is the HEADER, not the window. main-header sits inside
+             .main-content, which the in-flow side nav and the right panel both
+             narrow (#9480), so a viewport query handed a 420px header the same
+             floor as a 1500px one and the action nav was left a few pixels
+             wide with every button, overflow trigger included, outside it.
+             Still nested in the viewport query: below it there is no side nav
+             in flow, so the header IS the window, and the phone floor above is
+             a deliberate choice rather than a measurement error. */
+          @container main-header (min-width: 500px) {
+            min-width: 160px;
+          }
         }
 
-        /* The roomier floor, but only where the row can afford it — and the row
-           is the HEADER, not the window. main-header sits inside .main-content,
-           which the in-flow side nav and the right panel both narrow (#9480), so
-           a viewport query handed a 420px header the same 160px floor as a
-           1500px one: with .page-title-actions (~92px incl. margins) and the
-           pinned play/add/focus/overflow buttons (~200px) the row was
-           over-subscribed before a single action was placed, and the action nav
-           was left a handful of pixels wide with every button — the overflow
-           trigger included — outside it. 500px is that arithmetic plus the
-           wrapper's own padding. Below it the name ellipsizes instead, which is
-           the priority this row already states elsewhere (#7477). */
-        @container main-header (min-width: 500px) {
-          min-width: 160px;
+        /* Narrower than the title's floor plus its own buttons plus one
+           overflow trigger, so something has to go and it must not be the
+           trigger — that is the only route to every action already demoted.
+           Identity yields completely here; the actions stay. */
+        @container main-header (max-width: 299px) {
+          min-width: 0;
         }
 
         &:focus {
@@ -214,6 +220,16 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         gap: var(--s-quarter);
         margin-left: calc(-1 * var(--s));
         margin-right: var(--s2);
+
+        /* ...but "never shrinks" stops being tenable once the row is narrower
+           than these buttons plus one overflow trigger: they would claim their
+           full width and leave the trigger nothing. Both are reachable
+           elsewhere (the context menu on the background, and the customizer's
+           own shortcut), the trigger is not. Same threshold as the title's
+           floor above, so the two yield together. */
+        @container main-header (max-width: 299px) {
+          display: none;
+        }
       }
 
       .project-settings-btn {

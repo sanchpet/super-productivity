@@ -46,14 +46,21 @@
     -webkit-app-region: no-drag;
     box-sizing: border-box;
 
-    > .header-action-group {
+    // Descendant, not child: the horizontal row keeps everything except the
+    // overflow trigger inside `.action-nav-scroll` so the trigger cannot be the
+    // button that scrolls out of view. That box is `display: contents` here
+    // (and in every non-scrolling state), which removes it from the *rendered*
+    // tree but not from the *selector* tree — the same trap the `[data-slot]`
+    // note below already describes, so a `>` combinator would silently stop
+    // matching and the rail would lose its column layout.
+    .header-action-group {
       flex-direction: column;
       margin-right: 0;
       gap: var(--header-nav-button-gap);
     }
 
-    > .primary-action-group,
-    > .counters-action-group {
+    .primary-action-group,
+    .counters-action-group {
       margin-inline-end: 0;
       margin-block-end: calc(
         var(--header-action-group-gap) - var(--header-nav-button-gap)
