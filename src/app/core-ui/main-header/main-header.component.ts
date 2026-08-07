@@ -110,12 +110,6 @@ export class MainHeaderComponent implements OnDestroy {
 
   isXs = this.layoutService.isXs;
 
-  // Add-task and the panel buttons are not "demoted" on small screens, they
-  // *live somewhere else*: the bottom nav owns the add FAB and the panels menu.
-  // That is a product placement rule, not a width one, so it stays keyed to the
-  // bottom nav's presence rather than to the measured fit below.
-  private readonly _isOwnedByBottomNav = this.layoutService.isShowMobileBottomNav;
-
   private _currentTaskContext$ = this.taskService.currentTaskParentOrCurrent$.pipe(
     filter((ct) => !!ct),
     switchMap((currentTask) =>
