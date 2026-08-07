@@ -33,6 +33,9 @@ import { DEFAULT_GLOBAL_CONFIG } from '../../features/config/default-global-conf
 import { SyncStatus } from '../../op-log/sync-exports';
 import { SimpleCounter } from '../../features/simple-counter/simple-counter.model';
 import { ConflictJournalService } from '../../op-log/sync/conflict-journal.service';
+import { MatIconButton, MatMiniFabButton } from '@angular/material/button';
+import { MatIcon } from '@angular/material/icon';
+import { HeaderTokens, readHeaderTokens, runWidth } from './overflow/header-tokens';
 
 // Regression test for #7477: in a project view a long title pushed the
 // right-side header actions (simple-counter / habit buttons) off screen.
@@ -162,6 +165,38 @@ class PinnedOverflowHostComponent {}
 })
 class WindowControlsHostComponent {}
 
+// The header decides which actions fit by arithmetic over button counts and the
+// spacing tokens on its host, never by measuring the row it is deciding. That
+// only holds if the tokens are what the browser actually laid out with, so this
+// host renders real Material buttons against the real stylesheets (Karma loads
+// `src/styles.scss`, which is where the 40px/48px button boxes come from) and
+// the specs below compare the two. A stylesheet change that outgrows
+// `readHeaderTokens` fails here instead of silently mis-sizing the row.
+@Component({
+  standalone: true,
+  imports: [MatIconButton, MatMiniFabButton, MatIcon],
+  styleUrls: ['./main-header.component.scss'],
+  template: `
+    <div class="wrapper">
+      <nav class="action-nav-right">
+        <div class="header-action-group primary-action-group">
+          <button
+            mat-mini-fab
+            class="play-btn"
+          >
+            <mat-icon>play_arrow</mat-icon>
+          </button>
+          <button mat-icon-button><mat-icon>add</mat-icon></button>
+        </div>
+        <div class="header-action-group secondary-action-group">
+          <button mat-icon-button><mat-icon>bolt</mat-icon></button>
+        </div>
+      </nav>
+    </div>
+  `,
+})
+class TokenPinHostComponent {}
+
 const WINDOW_CONTROL_BODY_CLASSES = ['isElectron', 'isNoMac', 'isObsidianStyleHeader'];
 
 describe('MainHeaderComponent layout', () => {
@@ -171,8 +206,79 @@ describe('MainHeaderComponent layout', () => {
         HeaderLayoutHostComponent,
         PinnedOverflowHostComponent,
         WindowControlsHostComponent,
+        TokenPinHostComponent,
       ],
     }).compileComponents();
+  });
+
+  describe('spacing tokens', () => {
+    let fixture: ComponentFixture<TokenPinHostComponent>;
+    let tokens: HeaderTokens;
+    let host: HTMLElement;
+
+    beforeEach(() => {
+      fixture = TestBed.createComponent(TokenPinHostComponent);
+      host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      fixture.detectChanges();
+      tokens = readHeaderTokens(host);
+    });
+
+    afterEach(() => host.remove());
+
+    const rect = (sel: string): DOMRect =>
+      (host.querySelector(sel) as HTMLElement).getBoundingClientRect();
+
+    // A token whose value the reader cannot parse — a `calc()` on the CSS side
+    // is the way in — degrades to 0 without an error anywhere, and a 0 in the
+    // fit reads as "this costs nothing". Every token is a real length or this
+    // fails.
+    it('reads every token as a real length', () => {
+      Object.entries(tokens).forEach(([name, value]) => {
+        expect(Number.isFinite(value))
+          .withContext(`${name} did not parse as a length`)
+          .toBe(true);
+        expect(value).withContext(name).toBeGreaterThan(0);
+      });
+    });
+
+    it('sizes an action button exactly as --header-button-size says', () => {
+      expect(tokens.btn).toBeGreaterThan(0);
+      expect(rect('button[mat-icon-button]').width).toBe(tokens.btn);
+    });
+
+    it('sizes the play button exactly as --header-play-size says', () => {
+      expect(tokens.play).toBeGreaterThan(0);
+      expect(rect('button[mat-mini-fab]').width).toBe(tokens.play);
+    });
+
+    it('spaces buttons and groups exactly as the gap tokens say', () => {
+      const gapOf = (sel: string): number =>
+        parseFloat(getComputedStyle(host.querySelector(sel) as HTMLElement).columnGap);
+
+      expect(gapOf('nav.action-nav-right')).toBe(tokens.gap);
+      expect(gapOf('.header-action-group')).toBe(tokens.gap);
+      // A non-trailing group separates with the wider group gap, expressed as
+      // the difference on top of the gap the row already pays.
+      expect(
+        parseFloat(
+          getComputedStyle(host.querySelector('.primary-action-group') as HTMLElement)
+            .marginInlineEnd,
+        ),
+      ).toBe(tokens.groupGap - tokens.gap);
+    });
+
+    // The composite is the claim that actually matters: a run of buttons costs
+    // what `runWidth` says it costs, so the fit can add up a row it is not
+    // allowed to measure.
+    it('lays a run of buttons out at exactly runWidth()', () => {
+      expect(rect('.primary-action-group').width).toBe(
+        tokens.play + tokens.gap + tokens.btn,
+      );
+      expect(rect('.secondary-action-group').width).toBe(
+        runWidth(1, tokens.btn, tokens.gap),
+      );
+    });
   });
 
   // The row is narrower than its pinned actions, so the floor is engaged and

@@ -1,8 +1,13 @@
+import { Component, NO_ERRORS_SCHEMA, Provider } from '@angular/core';
+import { MatIconButton } from '@angular/material/button';
+import { MatIcon } from '@angular/material/icon';
+import { readHeaderTokens, runWidth } from '../overflow/header-tokens';
 import { TestBed } from '@angular/core/testing';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { NavigationEnd, Router } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { TranslateService } from '@ngx-translate/core';
+import { TranslateModule, TranslatePipe, TranslateService } from '@ngx-translate/core';
+import { MatMenu } from '@angular/material/menu';
 import { Store } from '@ngrx/store';
 
 import { PageTitleComponent } from './page-title.component';
@@ -16,12 +21,27 @@ import { GlobalConfigService } from '../../../features/config/global-config.serv
 import { PlainspaceShareService } from '../../../features/issue/providers/plainspace/plainspace-share.service';
 import { T } from '../../../t.const';
 
+// `MainHeaderComponent` owes the title's buttons their full width when it sizes
+// the action row, and computes that owed width from `actionButtonCount()` and
+// its own spacing tokens rather than by measuring. This host makes that
+// comparison possible: it pulls in main-header's stylesheet, so the real tokens
+// cascade onto the real `page-title` underneath, and the spec checks the
+// arithmetic against the box the browser actually laid out.
+@Component({
+  standalone: true,
+  imports: [PageTitleComponent],
+  styleUrls: ['../main-header.component.scss'],
+  template: `<div class="wrapper"><page-title></page-title></div>`,
+})
+class TitleReserveHostComponent {}
+
 describe('PageTitleComponent', () => {
   let routerEvents$: Subject<NavigationEnd>;
   let routerStub: { events: Subject<NavigationEnd>; url: string };
   let typeAndId$: BehaviorSubject<{ activeId: string; activeType: WorkContextType }>;
   let activeWorkContext$: BehaviorSubject<WorkContext>;
   let isShared$: BehaviorSubject<boolean>;
+  let isXxxs$: BehaviorSubject<{ matches: boolean }>;
   let openSpy: jasmine.Spy;
 
   // `color` is a Tag-only field not surfaced on WorkContext's type.
@@ -32,6 +52,47 @@ describe('PageTitleComponent', () => {
     routerStub.url = initialUrl;
     return TestBed.createComponent(PageTitleComponent).componentInstance;
   };
+
+  const stubProviders = (opts: { realTranslate?: boolean } = {}): Provider[] => [
+    { provide: Router, useValue: routerStub },
+    {
+      provide: BreakpointObserver,
+      useValue: { observe: () => isXxxs$ },
+    },
+    {
+      provide: WorkContextService,
+      useValue: {
+        activeWorkContextTitle$: of('Today'),
+        activeWorkContextTypeAndId$: typeAndId$,
+        activeWorkContext$,
+      },
+    },
+    // Ignores the selector arg — the switchMap only calls select() for a
+    // project context, so `isShared$` stands in for the shared-state result.
+    { provide: Store, useValue: { select: () => isShared$ } },
+    {
+      provide: PlainspaceShareService,
+      useValue: { openProjectOnPlainspace: openSpy },
+    },
+    {
+      provide: TaskViewCustomizerService,
+      useValue: { isCustomized: () => false },
+    },
+    {
+      provide: GlobalConfigService,
+      useValue: { cfg: () => ({ keyboard: {} }) },
+    },
+    // The rendering specs below mount the real template, whose `| translate`
+    // needs more of TranslateService than `instant`.
+    ...(opts.realTranslate
+      ? []
+      : [
+          {
+            provide: TranslateService,
+            useValue: { instant: (key: string) => key },
+          },
+        ]),
+  ];
 
   beforeEach(async () => {
     routerEvents$ = new Subject<NavigationEnd>();
@@ -50,46 +111,12 @@ describe('PageTitleComponent', () => {
       }),
     );
     isShared$ = new BehaviorSubject(false);
+    isXxxs$ = new BehaviorSubject<{ matches: boolean }>({ matches: false });
     openSpy = jasmine
       .createSpy('openProjectOnPlainspace')
       .and.returnValue(Promise.resolve());
 
-    await TestBed.configureTestingModule({
-      providers: [
-        { provide: Router, useValue: routerStub },
-        {
-          provide: BreakpointObserver,
-          useValue: { observe: () => of({ matches: false }) },
-        },
-        {
-          provide: WorkContextService,
-          useValue: {
-            activeWorkContextTitle$: of('Today'),
-            activeWorkContextTypeAndId$: typeAndId$,
-            activeWorkContext$,
-          },
-        },
-        // Ignores the selector arg — the switchMap only calls select() for a
-        // project context, so `isShared$` stands in for the shared-state result.
-        { provide: Store, useValue: { select: () => isShared$ } },
-        {
-          provide: PlainspaceShareService,
-          useValue: { openProjectOnPlainspace: openSpy },
-        },
-        {
-          provide: TaskViewCustomizerService,
-          useValue: { isCustomized: () => false },
-        },
-        {
-          provide: GlobalConfigService,
-          useValue: { cfg: () => ({ keyboard: {} }) },
-        },
-        {
-          provide: TranslateService,
-          useValue: { instant: (key: string) => key },
-        },
-      ],
-    })
+    await TestBed.configureTestingModule({ providers: stubProviders() })
       .overrideComponent(PageTitleComponent, {
         set: { imports: [], template: '' },
       })
@@ -272,6 +299,141 @@ describe('PageTitleComponent', () => {
       const c = setupComponent('/project/p1/tasks');
       c.openInPlainspace();
       expect(openSpy).toHaveBeenCalledWith('p1');
+    });
+  });
+
+  /**
+   * `MainHeaderComponent` sizes its action row from `actionButtonCount()`
+   * rather than from a measurement, so a count that disagrees with the template
+   * silently mis-sizes the header. These render the real template — the rest of
+   * this file stubs it away — and compare the count against what the DOM
+   * actually holds, so any future `@if` added to `.page-title-actions` without
+   * a matching term fails here instead of shipping.
+   */
+  // Keeps the real template — that is the whole point — but drops the
+  // directives that only decorate it. Three have to stay: `MatMenu`, because
+  // the template resolves `#activeWorkContextMenu="matMenu"` and an
+  // unresolvable `exportAs` is a compile error NO_ERRORS_SCHEMA does not cover,
+  // and `MatIconButton`/`MatIcon`, because the reserve spec measures the boxes
+  // they draw. `RouterLink` stays out, so no `ActivatedRoute` is needed.
+  const configureRender = async (): Promise<void> => {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [TranslateModule.forRoot(), TitleReserveHostComponent],
+      providers: stubProviders({ realTranslate: true }),
+    })
+      .overrideComponent(PageTitleComponent, {
+        set: {
+          imports: [TranslatePipe, MatMenu, MatIconButton, MatIcon],
+          schemas: [NO_ERRORS_SCHEMA],
+        },
+      })
+      .compileComponents();
+  };
+
+  describe('actionButtonCount()', () => {
+    const renderAt = async (
+      url: string,
+    ): Promise<{ count: number; rendered: number }> => {
+      await configureRender();
+      routerStub.url = url;
+      const fixture = TestBed.createComponent(PageTitleComponent);
+      fixture.detectChanges();
+      return {
+        count: fixture.componentInstance.actionButtonCount(),
+        rendered: fixture.nativeElement.querySelectorAll('.page-title-actions button')
+          .length,
+      };
+    };
+
+    it('matches the rendered buttons on the work view', async () => {
+      const { count, rendered } = await renderAt('/active/tasks');
+      expect(count).toBe(rendered);
+      expect(count).toBe(2);
+    });
+
+    it('matches the rendered buttons on a non-work-view context route', async () => {
+      const { count, rendered } = await renderAt('/active/notes');
+      expect(count).toBe(rendered);
+      expect(count).toBe(1);
+    });
+
+    it('counts the Plainspace button for a shared project', async () => {
+      typeAndId$.next({ activeId: 'p1', activeType: WorkContextType.PROJECT });
+      isShared$.next(true);
+      const { count, rendered } = await renderAt('/project/p1/tasks');
+      expect(count).toBe(rendered);
+      expect(count).toBe(3);
+    });
+
+    it('renders no actions on a special section', async () => {
+      const { count, rendered } = await renderAt('/config');
+      expect(count).toBe(rendered);
+      expect(count).toBe(0);
+    });
+
+    it('renders no actions at the smallest breakpoint', async () => {
+      isXxxs$.next({ matches: true });
+      const { count, rendered } = await renderAt('/active/tasks');
+      expect(count).toBe(rendered);
+      expect(count).toBe(0);
+    });
+  });
+
+  /**
+   * The other half of the same contract: the header turns the count into a
+   * width using its own spacing tokens, so those tokens have to describe the
+   * box this component actually draws. Mounted under a host that carries
+   * main-header's stylesheet, so the real tokens cascade down exactly as they
+   * do in the app.
+   */
+  describe('the width the header reserves for the title', () => {
+    let host: HTMLElement;
+
+    const render = async (url: string): Promise<void> => {
+      await configureRender();
+      routerStub.url = url;
+      const fixture = TestBed.createComponent(TitleReserveHostComponent);
+      host = fixture.nativeElement as HTMLElement;
+      document.body.appendChild(host);
+      fixture.detectChanges();
+    };
+
+    afterEach(() => host?.remove());
+
+    it('reserves exactly the box the action buttons occupy', async () => {
+      await render('/active/tasks');
+      const tokens = readHeaderTokens(host);
+      const actions = host.querySelector('.page-title-actions') as HTMLElement;
+      const style = getComputedStyle(actions);
+      const outerWidth =
+        actions.getBoundingClientRect().width +
+        parseFloat(style.marginLeft) +
+        parseFloat(style.marginRight);
+
+      const count = (
+        host.querySelector('page-title') as HTMLElement & {
+          [k: string]: unknown;
+        }
+      ).querySelectorAll('.page-title-actions button').length;
+
+      expect(count).toBe(2);
+      expect(outerWidth).toBe(
+        runWidth(count, tokens.btn, tokens.titleActionGap) + tokens.titleActionsMargin,
+      );
+    });
+
+    // The title text shrinks to nothing, but a flex item never shrinks below
+    // its own padding — so that padding is the floor the row still owes.
+    it('reserves exactly the padding the title cannot shrink past', async () => {
+      await render('/active/tasks');
+      const tokens = readHeaderTokens(host);
+      const style = getComputedStyle(host.querySelector('.page-title') as HTMLElement);
+
+      expect(parseFloat(style.minWidth) || 0).toBe(0);
+      expect(parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)).toBe(
+        tokens.titlePadding,
+      );
     });
   });
 });

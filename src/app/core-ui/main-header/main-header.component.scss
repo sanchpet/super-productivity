@@ -2,6 +2,13 @@
 
 // TODO split up into more manageable bits
 
+// Every length the action row is laid out with is declared once, here, and
+// consumed by the rules below and by `page-title`, which inherits them. The
+// header's fit reads these same tokens back off this element instead of
+// mirroring the numbers in TypeScript — mirrored constants disagreeing with the
+// stylesheet they were copied from is what #9480 kept tripping over.
+// `main-header.component.spec` pins each one against what the browser
+// actually renders.
 :host {
   display: block;
   position: relative;
@@ -9,9 +16,30 @@
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
   --header-button-size: 40px;
+  // The play button is a `mat-mini-fab`, but it lays out at the same box as
+  // every other action: neither `--mat-mini-fab-size` (declared in
+  // _css-variables.scss, consumed nowhere) nor the `--mat-fab-small-state-layer-size`
+  // override in _overwrite-material.scss reaches the container size Material
+  // actually sizes it with. Named separately anyway, so that if the play button
+  // is ever genuinely made larger there is one place to say so — and the spec
+  // below pins it either way.
+  --header-play-size: var(--header-button-size);
+  --header-title-padding-inline-start: var(--s);
+  --header-title-padding-inline-end: var(--s2);
+  --header-title-action-gap: var(--s-quarter);
+  // How far the title's buttons are pulled back toward the title, so they sit
+  // against the name instead of after a run of empty box. Declared positive and
+  // negated where it is applied: an unregistered custom property substitutes
+  // `var()` at computed-value time but does NOT evaluate `calc()`, so a
+  // `calc(-1 * ...)` here reads back as an unparseable string — which is
+  // silently zero to anything measuring it.
+  --header-title-actions-inset: var(--s);
+  --header-title-actions-gutter: var(--s2);
 
   @include mq(xs) {
     --header-action-group-gap: var(--s2);
+    --header-title-padding-inline-start: 0px;
+    --header-title-padding-inline-end: var(--s);
   }
 }
 

@@ -98,11 +98,13 @@ import { KeyboardConfig } from '@sp/keyboard-config';
             >
               <mat-icon>filter_list</mat-icon>
             </button>
-
-            <task-view-customizer-panel #customizerPanel></task-view-customizer-panel>
           }
         </div>
       }
+      <!-- Menu holders, kept out of the actions row: they draw nothing inline,
+           but inside that flex row they are still items and each one silently
+           charges it one more gap, which the header then owes width for. -->
+      <task-view-customizer-panel #customizerPanel></task-view-customizer-panel>
       <mat-menu #activeWorkContextMenu="matMenu">
         <ng-template matMenuContent>
           <work-context-menu
@@ -128,7 +130,12 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         max-width: 100%;
         cursor: pointer;
         border-radius: var(--card-border-radius);
-        padding: var(--s) var(--s2) var(--s) var(--s);
+        /* Inline padding comes from main-header, which owns the row's spacing
+           scale and reads these same tokens back when it sizes the row. The
+           fallbacks only apply if this component is ever mounted outside the
+           header. */
+        padding: var(--s) var(--header-title-padding-inline-end, var(--s2)) var(--s)
+          var(--header-title-padding-inline-start, var(--s));
 
         /* The title yields before the action row does, so a long context name
            ellipsizes instead of pushing the buttons off screen (#7477). This
@@ -153,11 +160,6 @@ import { KeyboardConfig } from '@sp/keyboard-config';
            the title nothing and demotes an action only once the actions
            themselves stop fitting. */
         min-width: 0;
-
-        @media (min-width: 600px) {
-          padding-left: 0;
-          padding-right: var(--s);
-        }
 
         &:focus {
           outline: none;
@@ -202,9 +204,9 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         /* Don't let the menu/filter buttons shrink; the title absorbs the
            squeeze instead (#7477). */
         flex: 0 0 auto;
-        gap: var(--s-quarter);
-        margin-left: calc(-1 * var(--s));
-        margin-right: var(--s2);
+        gap: var(--header-title-action-gap, var(--s-quarter));
+        margin-left: calc(-1 * var(--header-title-actions-inset, var(--s)));
+        margin-right: var(--header-title-actions-gutter, var(--s2));
       }
 
       .project-settings-btn {
@@ -376,6 +378,26 @@ export class PageTitleComponent {
   isXxxs = toSignal(this._isXxxs$.pipe(map((result) => result.matches)), {
     initialValue: false,
   });
+
+  /**
+   * How many buttons `.page-title-actions` renders.
+   *
+   * `MainHeaderComponent` owes these their full width when it decides how much
+   * room the action row has: they are `flex: 0 0 auto`, so unlike the title
+   * text they never yield. It reads a count rather than measuring the box,
+   * which is what keeps its fit a pure function of state instead of a
+   * measurement of the layout it is deciding.
+   *
+   * Lives here, directly under the `@if`s it mirrors, so the two cannot drift
+   * out of sight of each other — and `page-title.component.spec` pins it
+   * against the rendered DOM, because a count that silently disagrees with its
+   * template is the failure mode #9480 kept hitting.
+   */
+  readonly actionButtonCount = computed(() =>
+    this.isXxxs() || this.isSpecialSection()
+      ? 0
+      : (this.isSharedOnPlainspace() ? 1 : 0) + 1 + (this.isWorkViewPage() ? 1 : 0),
+  );
 
   get kb(): KeyboardConfig {
     return (this._configService.cfg()?.keyboard as KeyboardConfig) || {};
