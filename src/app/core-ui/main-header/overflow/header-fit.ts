@@ -1,4 +1,63 @@
-import { HeaderTokens, runWidth } from './header-tokens';
+/**
+ * The lengths the header's action row is laid out with, read back off the
+ * stylesheet that draws it.
+ *
+ * `MainHeaderComponent` decides which actions fit by arithmetic over button
+ * counts rather than by measuring the row. That is only honest if the numbers
+ * it multiplies are the numbers the browser actually used, so they are read
+ * from the custom properties on `main-header`'s host — declared once in
+ * `main-header.component.scss` and consumed by the very rules that lay the row
+ * out — instead of being copied into TypeScript. Every earlier attempt at this
+ * fit mirrored pixel constants from four stylesheets, and each bug #9480 went
+ * through was one of those constants disagreeing with its source.
+ *
+ * `main-header.component.spec` pins every field here against what a real
+ * browser renders, so a stylesheet change that outgrows this reader fails a
+ * test instead of silently mis-sizing the row.
+ */
+export interface HeaderTokens {
+  /**
+   * Width of one action button. Every action in the row is this wide,
+   * `play-button`'s `mat-mini-fab` included — `main-header.component.spec`
+   * pins that against a real rendering.
+   */
+  readonly btn: number;
+  /** Space between two buttons inside the row. */
+  readonly gap: number;
+  /** Space between two action groups. */
+  readonly groupGap: number;
+  /** Space between two of the page title's own buttons. */
+  readonly titleActionGap: number;
+  /** The page title's action buttons' net inline margins, inset included. */
+  readonly titleActionsMargin: number;
+  /**
+   * The page title's inline padding — how much of the row it still owes once
+   * its text has shrunk away. A flex item never shrinks below its own padding,
+   * whatever `min-width` says.
+   */
+  readonly titlePadding: number;
+}
+
+/**
+ * Every token read here must be a plain length. An *unregistered* custom
+ * property computes to its specified value with `var()` substituted but with
+ * `calc()` left unevaluated, so `calc(-1 * var(--s))` arrives as that literal
+ * string and parses to nothing. Doing the arithmetic on the CSS side of a token
+ * therefore reads back as 0 with no error anywhere — declare the plain length
+ * and do the arithmetic where the token is applied instead.
+ */
+/**
+ * What `n` buttons cost the row: each one plus the gap that separates it from
+ * whatever precedes it. A run of zero buttons costs nothing, not one gap.
+ */
+export const runWidth = (n: number, size: number, gap: number): number => {
+  if (n <= 0) {
+    return 0;
+  }
+  const buttons = n * size;
+  const gaps = (n - 1) * gap;
+  return buttons + gaps;
+};
 
 /**
  * An action that leaves the row when it stops fitting, first entry first.
@@ -35,18 +94,21 @@ export const DEMOTION_ORDER: readonly DemotableId[] = [
 ];
 
 /** Sub-pixel slop, so a fractional layout width never reads as an overflow. */
-export const FIT_EPSILON = 1;
+const FIT_EPSILON = 1;
 
 export interface FitInput {
   /** Content width of `.wrapper` — what the row has to fit into. */
   readonly budget: number;
-  /** Buttons that never leave the row. */
+  /**
+   * Buttons that never leave the row: the play button and add-task. More than
+   * zero also means the pinned group renders, which costs one separator.
+   */
   readonly pinnedButtons: number;
-  /** Whether one of those is the play button, which is its own width. */
-  readonly hasPlayButton: boolean;
-  /** Whether the pinned group renders, which costs the row one separator. */
-  readonly hasPrimaryGroup: boolean;
-  /** How many buttons each demotable slot holds, in `DEMOTION_ORDER`. */
+  /**
+   * How many buttons each demotable slot holds, in `DEMOTION_ORDER`. Every
+   * entry is at least 1 — a slot with no buttons is not offered at all — which
+   * is what makes demoting further always buy width.
+   */
   readonly slotButtons: readonly number[];
   /** What the page title still owes once its text has shrunk to nothing. */
   readonly titleReserve: number;
@@ -67,8 +129,8 @@ export interface Fit {
  * gap, whether the buttons sit in an action group, arrive as the children of a
  * `display: contents` component, or are the overflow trigger beside the
  * scroller — they are all links in one flex gap chain. So a row is a function
- * of how many buttons are in it, plus two corrections: the play button is its
- * own width, and the pinned group is followed by the wider group separator.
+ * of how many buttons are in it, plus the one separator that follows the
+ * pinned group.
  *
  * `main-header.component.spec` asserts this against a real rendering of the
  * shipped structure, which is what makes it safe to add the row up instead of
@@ -76,9 +138,8 @@ export interface Fit {
  */
 const rowWidth = (buttons: number, i: FitInput): number => {
   const t = i.tokens;
-  const play = i.hasPlayButton ? t.play - t.btn : 0;
-  const separator = i.hasPrimaryGroup ? t.groupGap - t.gap : 0;
-  return runWidth(buttons, t.btn, t.gap) + play + separator;
+  const separator = i.pinnedButtons > 0 ? t.groupGap - t.gap : 0;
+  return runWidth(buttons, t.btn, t.gap) + separator;
 };
 
 /**
@@ -111,18 +172,17 @@ export const solveFit = (i: FitInput): Fit => {
     }
   }
 
-  // Nothing fits. Take the narrowest arrangement, and require a demotion to
-  // genuinely buy width before preferring it — which is what stops the row
-  // hiding its last single action to make room for an equally wide trigger.
-  // On a phone that is the whole guard: the bottom nav owns add-task and the
-  // panel buttons, so a default install has exactly one demotable, and trading
-  // it for the trigger would hide the app's only sync indicator to gain
-  // nothing.
-  let best = 0;
-  for (let n = 1; n <= i.slotButtons.length; n++) {
-    if (cost(n) < cost(best) - FIT_EPSILON) {
-      best = n;
-    }
-  }
-  return { demoted: best, fits: false };
+  // Nothing fits, so the row will overflow whatever it does — but it should
+  // still end up as narrow as it can. Every slot holds at least one button, so
+  // past the first demotion each one strictly buys width and the narrowest
+  // arrangement is always "everything gone"; the only real question is whether
+  // that beats keeping the row as it is.
+  //
+  // It does not always. On a phone the bottom nav owns add-task and the panel
+  // buttons, so a default install has exactly one demotable — and demoting it
+  // removes one button while the trigger adds one back, hiding the app's only
+  // sync indicator behind a tap to gain nothing.
+  const all = i.slotButtons.length;
+  const worthIt = cost(all) < cost(0) - FIT_EPSILON;
+  return { demoted: worthIt ? all : 0, fits: false };
 };

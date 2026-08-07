@@ -1,12 +1,10 @@
-import { DEMOTION_ORDER, FitInput, solveFit } from './header-fit';
-import { HeaderTokens } from './header-tokens';
+import { DEMOTION_ORDER, FitInput, HeaderTokens, solveFit } from './header-fit';
 
 // The shipped values, so the numbers below read like the real row. The specs
 // never assert against these directly — `main-header.component.spec` is what
 // pins them to the stylesheet.
 const TOKENS: HeaderTokens = {
   btn: 40,
-  play: 40,
   gap: 4,
   groupGap: 16,
   titleActionGap: 2,
@@ -17,8 +15,6 @@ const TOKENS: HeaderTokens = {
 const input = (over: Partial<FitInput> = {}): FitInput => ({
   budget: 1000,
   pinnedButtons: 2,
-  hasPlayButton: true,
-  hasPrimaryGroup: true,
   slotButtons: [1, 1, 1, 1, 1, 1],
   titleReserve: 0,
   tokens: TOKENS,
@@ -60,7 +56,6 @@ describe('solveFit', () => {
       input({
         budget: 10,
         pinnedButtons: 1,
-        hasPrimaryGroup: true,
         slotButtons: [1],
       }),
     );

@@ -10,14 +10,17 @@
   the arithmetic rests on, and `main-header.component.spec` asserts it against a
   real rendering.
 -->
-<div class="wrapper">
+<div
+  class="wrapper"
+  #wrapper
+>
   @if (isDataLoaded()) {
     <page-title></page-title>
   }
 
   <nav
     class="action-nav-right"
-    [class.action-nav-right--scrolls]="needsScrollFloor()"
+    [class.action-nav-right--scrolls]="overflow.needsScrollFloor()"
   >
     <!--
       Everything except the overflow trigger. `display: contents` normally, so
@@ -45,7 +48,7 @@
            finishes, and the primary quick-capture entry point must not be
            missing for that window (#9420). No `data-slot`: this one is pinned,
            so it is never measured and never demoted. -->
-        @if (showAddTaskInline()) {
+        @if (overflow.showAddTaskInline()) {
           <button
             emlDrop
             (click)="layoutService.showAddTaskBar()"
@@ -66,10 +69,10 @@
           <!-- Focus button: keep the entry point discoverable on desktop and
                mobile. Last in DEMOTION_ORDER, so it only leaves a row that has
                already given up everything else. -->
-          @if (showFocusInline()) {
+          @if (overflow.showFocusInline()) {
             <focus-button></focus-button>
           }
-          @if (showCountersInline()) {
+          @if (overflow.showCountersInline()) {
             <div data-slot="counters">
               @for (
                 simpleCounter of enabledSimpleCounters();
@@ -86,13 +89,13 @@
           }
         </div>
 
-        @if (showSyncInline()) {
+        @if (overflow.showSyncInline()) {
           <div data-slot="sync">
             <ng-container [ngTemplateOutlet]="syncBtnTpl"></ng-container>
           </div>
         }
 
-        @if (showPluginBtnsInline()) {
+        @if (overflow.showPluginBtnsInline()) {
           <div data-slot="pluginHeader">
             <plugin-work-context-header-btns
               class="secondary-header-action"
@@ -101,13 +104,13 @@
           </div>
         }
 
-        @if (showUserProfileInline()) {
+        @if (overflow.showUserProfileInline()) {
           <div data-slot="userProfile">
             <user-profile-button class="secondary-header-action"></user-profile-button>
           </div>
         }
 
-        @if (showSidePanelBtnsInline()) {
+        @if (overflow.showSidePanelBtnsInline()) {
           <div data-slot="sidePanelBtns">
             <plugin-side-panel-btns
               class="secondary-header-action"
@@ -115,7 +118,7 @@
           </div>
         }
 
-        @if (showPanelBtnsInline()) {
+        @if (overflow.showPanelBtnsInline()) {
           <div data-slot="panelButtons">
             <desktop-panel-buttons
               class="secondary-header-action"
@@ -136,7 +139,7 @@
       that it is broken. Colour alone would be WCAG 1.4.1 and silent to a
       screen reader, hence the glyph and the handed-over tooltip.
     -->
-    @if (hasOverflow()) {
+    @if (overflow.hasOverflow()) {
       <button
         class="header-overflow-btn secondary-header-action"
         [class.is-error]="demotedSyncState() === 'error'"
@@ -181,7 +184,7 @@
   tooltips, toggled state and nested menus instead of reimplementing them.
   `inert` holds the hidden panel out of the tab order and the a11y tree (#9272).
 -->
-@if (isDataLoaded() && hasOverflow()) {
+@if (isDataLoaded() && overflow.hasOverflow()) {
   <div
     id="header-overflow-panel"
     class="header-overflow-panel"
@@ -190,22 +193,22 @@
     [attr.inert]="isOverflowOpen() ? null : ''"
     (click)="onDemotedActionClick($event)"
   >
-    @if (isDemotedPluginBtns()) {
+    @if (overflow.isDemotedPluginBtns()) {
       <plugin-work-context-header-btns></plugin-work-context-header-btns>
       <plugin-header-btns></plugin-header-btns>
     }
 
     <!-- Opens a menu that restores focus into itself on close, so using it must
          NOT dismiss the panel out from under it (see onDemotedActionClick). -->
-    @if (isDemotedUserProfile()) {
+    @if (overflow.isDemotedUserProfile()) {
       <user-profile-button data-keeps-overflow-open></user-profile-button>
     }
 
-    @if (isDemotedSidePanelBtns()) {
+    @if (overflow.isDemotedSidePanelBtns()) {
       <plugin-side-panel-btns></plugin-side-panel-btns>
     }
 
-    @if (isDemotedPanelBtns()) {
+    @if (overflow.isDemotedPanelBtns()) {
       <desktop-panel-buttons
         [kb]="kb"
         [isRouteWithSidePanel]="isRouteWithSidePanel()"
@@ -221,7 +224,7 @@
          stopwatch's label would vanish the moment it is started. Long-pressing
          one also opens a dialog, which dismissing would drop focus out of.
          See onDemotedActionClick. -->
-    @if (isDemotedCounters()) {
+    @if (overflow.isDemotedCounters()) {
       @for (
         simpleCounter of enabledSimpleCounters();
         track trackById($index, simpleCounter)
@@ -235,13 +238,13 @@
       }
     }
 
-    @if (isDemotedSync()) {
+    @if (overflow.isDemotedSync()) {
       <ng-container [ngTemplateOutlet]="syncBtnTpl"></ng-container>
     }
 
     <!-- Opens the focus overlay, which takes over the screen, so the panel
          closing behind it is exactly right. -->
-    @if (isDemotedFocus()) {
+    @if (overflow.isDemotedFocus()) {
       <focus-button></focus-button>
     }
   </div>

@@ -1,13 +1,4 @@
-import {
-  afterNextRender,
-  computed,
-  DestroyRef,
-  ElementRef,
-  inject,
-  Injectable,
-  signal,
-  Signal,
-} from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, signal, Signal } from '@angular/core';
 import { DataInitStateService } from '../../../core/data-init/data-init-state.service';
 import { GlobalConfigService } from '../../../features/config/global-config.service';
 import { SimpleCounterService } from '../../../features/simple-counter/simple-counter.service';
@@ -16,8 +7,15 @@ import { PluginBridgeService } from '../../../plugins/plugin-bridge.service';
 import { LayoutService } from '../../layout/layout.service';
 import { desktopPanelButtonCount } from '../desktop-panel-buttons/desktop-panel-buttons.component';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { DemotableId, DEMOTION_ORDER, Fit, solveFit } from './header-fit';
-import { HeaderTokens, readHeaderTokens, runWidth } from './header-tokens';
+import {
+  DemotableId,
+  DEMOTION_ORDER,
+  Fit,
+  HeaderTokens,
+  runWidth,
+  solveFit,
+} from './header-fit';
+import { readHeaderTokens } from './header-tokens';
 
 const NOTHING_DEMOTED: Fit = { demoted: 0, fits: true };
 
@@ -41,11 +39,11 @@ const NOTHING_DEMOTED: Fit = { demoted: 0, fits: true };
  * for a frame first, which is what made the row flicker whenever the side panel
  * opened or a divider was dragged.
  *
- * Provided by `MainHeaderComponent`, so its `ElementRef` is the header's host.
+ * Provided by `MainHeaderComponent`, which hands it the row to watch via
+ * `observe()`.
  */
 @Injectable()
 export class HeaderOverflowService {
-  private readonly _host = inject(ElementRef).nativeElement as HTMLElement;
   private readonly _plugins = inject(PluginBridgeService);
   private readonly _config = inject(GlobalConfigService);
   private readonly _layout = inject(LayoutService);
@@ -62,21 +60,47 @@ export class HeaderOverflowService {
     initialValue: [],
   });
 
-  private readonly _width = signal(0);
-  private readonly _tokens = signal<HeaderTokens | null>(null);
+  // A percentage-sized side panel makes the header's width fractional, and a
+  // ResizeObserver fires on height changes too, so compare with a pixel of slop
+  // rather than exactly: sub-pixel jitter must not wake the fit.
+  private readonly _width = signal(0, { equal: (a, b) => Math.abs(a - b) < 1 });
+
+  // `readHeaderTokens` builds a fresh object per delivery, so without this every
+  // resize frame would notify with values that had not moved. They only change
+  // at a viewport breakpoint.
+  private readonly _tokens = signal<HeaderTokens | null>(null, {
+    equal: (a, b) =>
+      !!a &&
+      !!b &&
+      (Object.keys(a) as (keyof HeaderTokens)[]).every((k) => a[k] === b[k]),
+  });
+
+  private readonly _titleActionCount = signal<Signal<number>>(signal(0));
 
   /**
-   * How many buttons `page-title` renders beside the title. Pushed in by the
-   * component from its `viewChild`, because the count belongs next to the
-   * template that decides it.
+   * How many buttons `page-title` renders beside the title — bound once, as a
+   * signal rather than copied value.
+   *
+   * The count belongs next to the template that decides it, so the component
+   * hands its `viewChild` over. Handing over the *signal* keeps it a plain edge
+   * in the graph: copying the value through an effect would let the row render
+   * once with the old reserve and re-fit a frame later, which is the one-frame
+   * reflow this whole change exists to remove.
    */
-  readonly titleActionCount = signal(0);
+  bindTitleActionCount(count: Signal<number>): void {
+    this._titleActionCount.set(count);
+  }
 
   /**
-   * Set while the actions are teleported into the vertical action strip. That
-   * is a fixed-width column, not this row, so there is nothing to fit.
+   * The vertical action strip teleports the actions into a fixed-width column,
+   * which is not this row — so there is nothing to fit. Derived here rather
+   * than pushed in by the component: it is the same two signals this service
+   * already reads, and a predicate stated in two places is the drift this
+   * refactor exists to remove.
    */
-  readonly isDisabled = signal(false);
+  private readonly _isVerticalActionBar = computed(
+    () => !this._layout.isXs() && !!this._config.misc()?.isVerticalActionBar,
+  );
 
   /**
    * Add-task, the panel buttons and the plugin side-panel buttons are absent on
@@ -93,27 +117,34 @@ export class HeaderOverflowService {
    * rather than demoted — an action that does not exist must not consume the
    * row's one chance to collapse something.
    */
-  private readonly _slotButtons = computed<ReadonlyMap<DemotableId, number>>(() => {
-    if (!this._isDataLoaded()) {
-      return new Map();
-    }
-    const af = this._config.appFeatures();
-    const mobile = this._ownedByBottomNav();
-    const counts: Record<DemotableId, number> = {
-      pluginHeader:
-        this._plugins.headerButtons().length +
-        this._plugins.workContextHeaderButtons().length,
-      userProfile: af.isEnableUserProfiles && this._profiles.isInitialized() ? 1 : 0,
-      sidePanelBtns: mobile ? 0 : this._plugins.sidePanelButtons().length,
-      panelButtons: mobile ? 0 : desktopPanelButtonCount(af),
-      counters: this._enabledCounters().filter((c) => !c.isHideButton).length,
-      sync: af.isSyncIconEnabled ? 1 : 0,
-      focus: af.isFocusModeEnabled ? 1 : 0,
-    };
-    return new Map(
-      DEMOTION_ORDER.filter((id) => counts[id] > 0).map((id) => [id, counts[id]]),
-    );
-  });
+  private readonly _slotButtons = computed<ReadonlyMap<DemotableId, number>>(
+    () => {
+      if (!this._isDataLoaded()) {
+        return new Map();
+      }
+      const af = this._config.appFeatures();
+      const mobile = this._ownedByBottomNav();
+      const counts: Record<DemotableId, number> = {
+        pluginHeader:
+          this._plugins.headerButtons().length +
+          this._plugins.workContextHeaderButtons().length,
+        userProfile: af.isEnableUserProfiles && this._profiles.isInitialized() ? 1 : 0,
+        sidePanelBtns: mobile ? 0 : this._plugins.sidePanelButtons().length,
+        panelButtons: mobile ? 0 : desktopPanelButtonCount(af),
+        counters: this._enabledCounters().filter((c) => !c.isHideButton).length,
+        sync: af.isSyncIconEnabled ? 1 : 0,
+        focus: af.isFocusModeEnabled ? 1 : 0,
+      };
+      return new Map(
+        DEMOTION_ORDER.filter((id) => counts[id] > 0).map((id) => [id, counts[id]]),
+      );
+    },
+    {
+      // A running stopwatch re-emits the counter list every second, so without
+      // value equality the whole graph below would churn once a second forever.
+      equal: (a, b) => a.size === b.size && [...a].every(([id, n]) => b.get(id) === n),
+    },
+  );
 
   /** The demotable actions this configuration offers, in demotion order. */
   private readonly _slotIds = computed<readonly DemotableId[]>(() => [
@@ -124,19 +155,16 @@ export class HeaderOverflowService {
     () => {
       const tokens = this._tokens();
       const budget = this._width();
-      if (!tokens || budget <= 0 || this.isDisabled()) {
+      if (!tokens || budget <= 0 || this._isVerticalActionBar()) {
         return NOTHING_DEMOTED;
       }
-      const slots = this._slotButtons();
       const hasPlay =
         this._isDataLoaded() && this._config.appFeatures().isTimeTrackingEnabled;
       const hasAddTask = this.showAddTaskInline();
       return solveFit({
         budget,
         pinnedButtons: (hasPlay ? 1 : 0) + (hasAddTask ? 1 : 0),
-        hasPlayButton: hasPlay,
-        hasPrimaryGroup: hasPlay || hasAddTask,
-        slotButtons: [...slots.values()],
+        slotButtons: [...this._slotButtons().values()],
         titleReserve: this._titleReserve(tokens),
         tokens,
       });
@@ -154,7 +182,7 @@ export class HeaderOverflowService {
     if (!this._isDataLoaded()) {
       return 0;
     }
-    const buttons = this.titleActionCount();
+    const buttons = this._titleActionCount()();
     const actions =
       buttons > 0 ? runWidth(buttons, t.btn, t.titleActionGap) + t.titleActionsMargin : 0;
     return t.titlePadding + actions;
@@ -198,21 +226,20 @@ export class HeaderOverflowService {
   readonly showSyncInline = this._isInline('sync');
   readonly showFocusInline = this._isInline('focus');
 
-  constructor() {
-    afterNextRender(() => this._observe());
-  }
-
   /**
-   * The row's one DOM read. `contentRect` is the *content* box, so the wrapper's
-   * padding is already subtracted — including the Electron window-controls
-   * reserve, which is a `calc()` over `env(titlebar-area-width)` and is dropped
-   * the moment the right panel opens. Tokens are re-read here too: the callback
-   * runs after layout, so it is the one place guaranteed to see the values a
-   * breakpoint has just switched.
+   * Start watching the row. The component hands the element over rather than
+   * this service going looking for it: `.wrapper` belongs to the header's own
+   * template, and a `querySelector` that quietly found nothing would leave the
+   * width at 0 and the row never collapsing — #9480 again, silently.
+   *
+   * `contentRect` is the *content* box, so the wrapper's padding is already
+   * subtracted, including the Electron window-controls reserve — a `calc()`
+   * over `env(titlebar-area-width)` that is dropped the moment the right panel
+   * opens. Tokens are re-read in the callback because it runs after layout, so
+   * it is the one place guaranteed to see values a breakpoint just switched.
    */
-  private _observe(): void {
-    const wrapper = this._host.querySelector?.('.wrapper');
-    if (typeof ResizeObserver === 'undefined' || !(wrapper instanceof Element)) {
+  observe(wrapper: HTMLElement): void {
+    if (typeof ResizeObserver === 'undefined') {
       return;
     }
     const observer = new ResizeObserver((entries) => {
@@ -220,7 +247,7 @@ export class HeaderOverflowService {
       if (width <= 0) {
         return;
       }
-      this._tokens.set(readHeaderTokens(this._host));
+      this._tokens.set(readHeaderTokens(wrapper));
       this._width.set(width);
     });
     observer.observe(wrapper);

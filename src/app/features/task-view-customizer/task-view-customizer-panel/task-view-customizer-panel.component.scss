@@ -2,9 +2,9 @@
 // This is necessary because mat-menu renders in a global overlay container
 
 // This component renders only a `mat-menu`, which lives in that overlay — so
-// the host element has nothing in it. Without this it is still a flex item of
-// `.page-title-actions` and silently charges the row a `gap` for a box that
-// draws nothing, which throws the header's action-count arithmetic off.
+// the host element has nothing in it and must not take part in layout. Without
+// this it still counts as a flex item wherever it is mounted, taking a `gap`
+// for a box that draws nothing.
 :host {
   display: contents;
 }

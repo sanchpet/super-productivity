@@ -15,15 +15,14 @@
   user-select: none;
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
+  // Every action in the row is this wide, `play-button` included: it is a
+  // `mat-mini-fab`, but neither `--mat-mini-fab-size` nor the
+  // `--mat-fab-small-state-layer-size` override in _overwrite-material.scss
+  // reaches the container size Material actually sizes it with, so it lays out
+  // on the same box as an icon button. There is deliberately no separate token
+  // for it: a token no rule consumes cannot change a width, it can only make
+  // the fit reserve one that is not there.
   --header-button-size: 40px;
-  // The play button is a `mat-mini-fab`, but it lays out at the same box as
-  // every other action: neither `--mat-mini-fab-size` (declared in
-  // _css-variables.scss, consumed nowhere) nor the `--mat-fab-small-state-layer-size`
-  // override in _overwrite-material.scss reaches the container size Material
-  // actually sizes it with. Named separately anyway, so that if the play button
-  // is ever genuinely made larger there is one place to say so — and the spec
-  // below pins it either way.
-  --header-play-size: var(--header-button-size);
   --header-title-padding-inline-start: var(--s);
   --header-title-padding-inline-end: var(--s2);
   --header-title-action-gap: var(--s-quarter);
@@ -214,11 +213,11 @@ button.isActive2 {
     margin-right: auto;
   }
 
-  // Last-resort floor (#9480). The demotion model moves the low-priority
-  // actions out, but the pinned ones — play, add-task, focus and the overflow
-  // trigger itself — cannot move, and measured against the real CSS they stop
+  // Last-resort floor (#9480). The demotion model moves every demotable action
+  // out, but the pinned ones — play, add-task and the overflow trigger itself —
+  // cannot move, and measured against the real CSS they stop
   // fitting somewhere under a ~1050px window with the right panel open. Once
-  // everything demotable has already gone, `_reflow` has nothing left to do and
+  // everything demotable has already gone, the fit has nothing left to give and
   // the row used to simply run off the edge, unreachable, because nothing in
   // the ancestor chain scrolls (`.main-content` is `overflow: hidden`). That is
   // the reported bug, and the reporter asked for exactly this: "scrollable or
@@ -237,7 +236,7 @@ button.isActive2 {
       flex-shrink: 0;
     }
 
-    // Only while the row genuinely does not fit (`_reflow` sets the class).
+    // Only while the row genuinely does not fit (`needsScrollFloor` sets it).
     // Scrolling means clipping, and clipping this row is not free: the play
     // button is its first child, so `.current-task-title` — the pill naming
     // the tracked task, absolutely positioned at `right: 100%` of the play
@@ -265,7 +264,7 @@ button.isActive2 {
       // Block padding is cancelled by a negative margin, so the row's own box
       // is unchanged. The start padding is not: that side carries
       // `margin-left: auto`, which absorbs the 8px instead, so no button
-      // moves. It costs the fit measure in `_reflow` 8px in this state only,
+      // moves. The fit never measures this box, so the 8px costs it nothing,
       // which errs towards staying scrollable rather than towards clipping.
       overflow-y: hidden;
       padding-block: 8px;
@@ -323,11 +322,11 @@ page-title {
   display: contents;
 }
 
-// Wrappers around each demotable action. They exist to be measured — the
-// reflow pass reads their real width instead of predicting it from the button
-// sizes and gaps declared in other stylesheets (#9480). `display: contents`
-// would leave nothing to measure, so they are real flex boxes carrying the same
-// gap the nav does, which keeps the row looking identical.
+// Wrappers around each demotable action. Nothing measures them any more — the
+// fit adds the row up from button counts — but they space with the same gap the
+// row does, so a slot of N buttons stays exactly N links of the row's one gap
+// chain. That is the property the arithmetic rests on, and
+// `main-header.component.spec` asserts it against a real rendering.
 [data-slot] {
   display: flex;
   align-items: center;

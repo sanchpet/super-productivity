@@ -70,7 +70,7 @@
     // the overflow reflow can measure it (#9480). That box is a *row* flex, and
     // it would both lay its buttons out sideways inside this 48px rail and hide
     // the components below from the direct-child selectors that follow. Nothing
-    // needs measuring here — `_reflow()` early-returns while the bar is
+    // needs measuring here — the fit is switched off while the bar is
     // vertical — so collapse the wrappers away entirely.
     [data-slot] {
       display: contents;

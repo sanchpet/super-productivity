@@ -20,8 +20,19 @@ const countRowMutations = async (
   page: Page,
   act: () => Promise<void>,
 ): Promise<number> => {
+  await expect(page.locator('.action-nav-scroll')).toHaveCount(1);
+
   await page.evaluate(() => {
-    const scroller = document.querySelector('.action-nav-scroll') as HTMLElement;
+    // The scroller and the action groups inside it — every level an action can
+    // be added to or removed from. Watching only the scroller would miss the
+    // focus button and the counters, which live one level down inside
+    // `.counters-action-group`, and their subscriptions are exactly the churn
+    // this is here to catch. Not `subtree`, though: below these, Material's
+    // ripple nodes appear and vanish under the cursor a drag drags across, and
+    // counting those would measure the mouse rather than the row.
+    const boxes = document.querySelectorAll(
+      '.action-nav-scroll, .action-nav-scroll .header-action-group',
+    );
     const w = window as unknown as {
       __rowMutations: number;
       __rowObserver: MutationObserver;
@@ -30,10 +41,7 @@ const countRowMutations = async (
     w.__rowObserver = new MutationObserver((records) => {
       w.__rowMutations += records.length;
     });
-    // Direct children only. Deeper than that is Material's own business —
-    // ripple nodes appear and vanish under the cursor a drag drags across, and
-    // counting those would measure the mouse, not the row.
-    w.__rowObserver.observe(scroller, { childList: true });
+    boxes.forEach((box) => w.__rowObserver.observe(box, { childList: true }));
   });
 
   await act();

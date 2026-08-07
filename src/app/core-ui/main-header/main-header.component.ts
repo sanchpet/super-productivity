@@ -1,12 +1,13 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
   ElementRef,
   inject,
+  linkedSignal,
   OnDestroy,
-  signal,
   viewChild,
 } from '@angular/core';
 import { ProjectService } from '../../features/project/project.service';
@@ -46,7 +47,6 @@ import { DesktopPanelButtonsComponent } from './desktop-panel-buttons/desktop-pa
 import { toSignal } from '@angular/core/rxjs-interop';
 import { UserProfileButtonComponent } from '../../features/user-profile/user-profile-button/user-profile-button.component';
 import { FocusButtonComponent } from './focus-button/focus-button.component';
-import { UserProfileService } from '../../features/user-profile/user-profile.service';
 import { EmlDropDirective } from '../../core/drop-paste-input/eml-drop.directive';
 import { ConflictJournalService } from '../../op-log/sync/conflict-journal.service';
 import { HeaderOverflowService } from './overflow/header-overflow.service';
@@ -190,23 +190,12 @@ export class MainHeaderComponent implements OnDestroy {
   });
   // Keep the focus entry point visible on mobile too when the feature is enabled.
   // Otherwise Android users can only discover focus mode by rotating to a wider layout (#8157).
-  readonly isSyncIconEnabled = computed(() => {
-    return this.globalConfigService.appFeatures().isSyncIconEnabled;
-  });
 
   // Check if there are any undone tasks that can be tracked
   private readonly _hasTrackableTasks$ = this.workContextService.undoneTasks$.pipe(
     map((tasks) => tasks.length > 0),
   );
   hasTrackableTasks = toSignal(this._hasTrackableTasks$, { initialValue: true });
-
-  private readonly _userProfileService = inject(UserProfileService);
-  isUserProfilesEnabled = computed(() => {
-    return (
-      this.globalConfigService.appFeatures().isEnableUserProfiles &&
-      this._userProfileService.isInitialized()
-    );
-  });
 
   private _subs: Subscription = new Subscription();
 
@@ -222,28 +211,19 @@ export class MainHeaderComponent implements OnDestroy {
   readonly overflow = inject(HeaderOverflowService);
 
   private readonly _pageTitle = viewChild(PageTitleComponent);
+  private readonly _wrapper = viewChild.required<ElementRef<HTMLElement>>('wrapper');
 
-  readonly needsScrollFloor = this.overflow.needsScrollFloor;
-  readonly hasOverflow = this.overflow.hasOverflow;
-
-  readonly isDemotedPluginBtns = this.overflow.isDemotedPluginBtns;
-  readonly isDemotedUserProfile = this.overflow.isDemotedUserProfile;
-  readonly isDemotedSidePanelBtns = this.overflow.isDemotedSidePanelBtns;
-  readonly isDemotedPanelBtns = this.overflow.isDemotedPanelBtns;
-  readonly isDemotedCounters = this.overflow.isDemotedCounters;
-  readonly isDemotedSync = this.overflow.isDemotedSync;
-  readonly isDemotedFocus = this.overflow.isDemotedFocus;
-
-  readonly showPluginBtnsInline = this.overflow.showPluginBtnsInline;
-  readonly showUserProfileInline = this.overflow.showUserProfileInline;
-  readonly showSidePanelBtnsInline = this.overflow.showSidePanelBtnsInline;
-  readonly showPanelBtnsInline = this.overflow.showPanelBtnsInline;
-  readonly showCountersInline = this.overflow.showCountersInline;
-  readonly showSyncInline = this.overflow.showSyncInline;
-  readonly showFocusInline = this.overflow.showFocusInline;
-  readonly showAddTaskInline = this.overflow.showAddTaskInline;
-
-  readonly isOverflowOpen = signal(false);
+  /**
+   * Widening the header empties the overflow panel and removes its trigger — so
+   * the open flag must not outlive it, or the panel springs open by itself the
+   * next time the row narrows. `linkedSignal` resets it in the same pass rather
+   * than a scheduling hop later, so there is never a moment where the panel
+   * reports itself open with nothing in it.
+   */
+  readonly isOverflowOpen = linkedSignal<boolean, boolean>({
+    source: this.overflow.hasOverflow,
+    computation: (hasOverflow, prev) => hasOverflow && (prev?.value ?? false),
+  });
 
   toggleOverflow(): void {
     this.isOverflowOpen.update((v) => !v);
@@ -297,24 +277,17 @@ export class MainHeaderComponent implements OnDestroy {
       const enabled = this._isVerticalActionBar();
       this.isDataLoaded();
       this._syncTeleport(enabled);
-      // A teleported strip is a fixed-width column, so there is no row to fit.
-      this.overflow.isDisabled.set(enabled);
-    });
-
-    // Widening the header empties the overflow panel and removes its trigger,
-    // but the open flag would survive — so the panel would spring open by
-    // itself the next time the header narrowed.
-    effect(() => {
-      if (!this.hasOverflow()) {
-        this.isOverflowOpen.set(false);
-      }
     });
 
     // How much room the title's own buttons need is the one part of the fit
     // that page-title owns, so it is read from there rather than restated here.
-    effect(() => {
-      this.overflow.titleActionCount.set(this._pageTitle()?.actionButtonCount() ?? 0);
-    });
+    // `viewChild` is undefined until the view exists, hence the fallback.
+    this.overflow.bindTitleActionCount(
+      computed(() => this._pageTitle()?.actionButtonCount() ?? 0),
+    );
+
+    // The row is the header's own element, so the header is what hands it over.
+    afterNextRender(() => this.overflow.observe(this._wrapper().nativeElement));
 
     this._listenForDismissal();
   }
@@ -426,16 +399,25 @@ export class MainHeaderComponent implements OnDestroy {
 
   /** Accent the trigger while a demoted counter is still running. */
   readonly isDemotedCounterRunning = computed(
-    () => this.isDemotedCounters() && this.enabledSimpleCounters().some((c) => c.isOn),
+    () =>
+      this.overflow.isDemotedCounters() &&
+      this.enabledSimpleCounters().some((c) => c.isOn),
   );
 
   /**
-   * Same, for a focus session. Focus only leaves a row that is already out of
-   * room, but when it does it takes a live countdown with it, so the trigger
-   * has to keep saying that something is running.
+   * Same, for a focus session — which takes a live countdown with it when it
+   * goes, so the trigger has to keep saying something is in progress.
+   *
+   * Matches `focus-button`'s own `circleVisible()` exactly, paused sessions and
+   * breaks included: those are the states where the user has most lost sight of
+   * the session, so they are the last ones that may go unindicated.
    */
   readonly isDemotedFocusRunning = computed(
-    () => this.isDemotedFocus() && this._focusModeService.isSessionRunning(),
+    () =>
+      this.overflow.isDemotedFocus() &&
+      (this._focusModeService.isSessionRunning() ||
+        this._focusModeService.isSessionPaused() ||
+        this._focusModeService.isBreakActive()),
   );
 
   // Sync is the one demotable action carrying state the user is meant to notice
@@ -455,7 +437,7 @@ export class MainHeaderComponent implements OnDestroy {
   // majority who have nothing wrong. The cost is that a mid-session credential
   // revocation reads as plain "more actions" until the panel is opened.
   readonly demotedSyncState = computed<'offline' | 'error' | null>(() => {
-    if (!this.isDemotedSync() || !this.syncIsEnabledAndReady()) {
+    if (!this.overflow.isDemotedSync() || !this.syncIsEnabledAndReady()) {
       return null;
     }
     if (!this.isOnline()) {
@@ -489,7 +471,7 @@ export class MainHeaderComponent implements OnDestroy {
   );
 
   readonly demotedConflictCount = computed(() =>
-    this.isDemotedSync() ? this.unreviewedConflictCount() : 0,
+    this.overflow.isDemotedSync() ? this.unreviewedConflictCount() : 0,
   );
 
   /**

@@ -100,11 +100,14 @@ import { KeyboardConfig } from '@sp/keyboard-config';
             </button>
           }
         </div>
+        <!-- Beside the actions row rather than inside it. It draws nothing
+             inline, but as a child of that flex row it is still an item and
+             silently charges it one more gap, which the header then owes width
+             for. It stays in this block rather than moving further out so the
+             trigger above can still resolve the ref, and so it is not
+             instantiated on views that have no trigger for it. -->
+        <task-view-customizer-panel #customizerPanel></task-view-customizer-panel>
       }
-      <!-- Menu holders, kept out of the actions row: they draw nothing inline,
-           but inside that flex row they are still items and each one silently
-           charges it one more gap, which the header then owes width for. -->
-      <task-view-customizer-panel #customizerPanel></task-view-customizer-panel>
       <mat-menu #activeWorkContextMenu="matMenu">
         <ng-template matMenuContent>
           <work-context-menu
@@ -155,10 +158,10 @@ import { KeyboardConfig } from '@sp/keyboard-config';
            Nothing is lost by dropping it. The title is the first thing in the
            row to shrink (flex-shrink: 999 above), so the floor only ever bound
            when the row was already tight -- and yielding there is the stated
-           priority (#7477). MainHeaderComponent reads this value back with
-           getComputedStyle, so its fit model follows automatically: it now owes
-           the title nothing and demotes an action only once the actions
-           themselves stop fitting. */
+           priority (#7477). What the header still owes the title is the padding
+           below, which a flex item never shrinks past whatever min-width says --
+           and it reserves that from the header-title-padding tokens rather than
+           measuring this box. */
         min-width: 0;
 
         &:focus {
@@ -393,11 +396,15 @@ export class PageTitleComponent {
    * against the rendered DOM, because a count that silently disagrees with its
    * template is the failure mode #9480 kept hitting.
    */
-  readonly actionButtonCount = computed(() =>
-    this.isXxxs() || this.isSpecialSection()
-      ? 0
-      : (this.isSharedOnPlainspace() ? 1 : 0) + 1 + (this.isWorkViewPage() ? 1 : 0),
-  );
+  readonly actionButtonCount = computed(() => {
+    // The outermost `@if` too: with no work context this component renders
+    // nothing at all, and a count that forgot it would have the header
+    // reserving room for buttons that are not on screen.
+    if (!this.activeWorkContextTypeAndId() || this.isXxxs() || this.isSpecialSection()) {
+      return 0;
+    }
+    return (this.isSharedOnPlainspace() ? 1 : 0) + 1 + (this.isWorkViewPage() ? 1 : 0);
+  });
 
   get kb(): KeyboardConfig {
     return (this._configService.cfg()?.keyboard as KeyboardConfig) || {};

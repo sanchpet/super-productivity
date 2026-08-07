@@ -1,7 +1,8 @@
 import { Component, NO_ERRORS_SCHEMA, Provider } from '@angular/core';
 import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
-import { readHeaderTokens, runWidth } from '../overflow/header-tokens';
+import { readHeaderTokens } from '../overflow/header-tokens';
+import { runWidth } from '../overflow/header-fit';
 import { TestBed } from '@angular/core/testing';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { NavigationEnd, Router } from '@angular/router';

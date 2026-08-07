@@ -33,10 +33,18 @@ import { DEFAULT_GLOBAL_CONFIG } from '../../features/config/default-global-conf
 import { SyncStatus } from '../../op-log/sync-exports';
 import { SimpleCounter } from '../../features/simple-counter/simple-counter.model';
 import { ConflictJournalService } from '../../op-log/sync/conflict-journal.service';
-import { MatIconButton, MatMiniFabButton } from '@angular/material/button';
+import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
-import { HeaderTokens, readHeaderTokens, runWidth } from './overflow/header-tokens';
+import { readHeaderTokens } from './overflow/header-tokens';
+import { HeaderTokens, runWidth } from './overflow/header-fit';
 import { HeaderOverflowService } from './overflow/header-overflow.service';
+import { PlayButtonComponent } from './play-button/play-button.component';
+import { FocusButtonComponent } from './focus-button/focus-button.component';
+import { SimpleCounterButtonComponent } from '../../features/simple-counter/simple-counter-button/simple-counter-button.component';
+import { SimpleCounterType } from '../../features/simple-counter/simple-counter.model';
+import { GlobalTrackingIntervalService } from '../../core/global-tracking-interval/global-tracking-interval.service';
+import { BannerService } from '../../core/banner/banner.service';
+import { NavigateToTaskService } from '../navigate-to-task/navigate-to-task.service';
 import { FocusModeService } from '../../features/focus-mode/focus-mode.service';
 
 // Regression test for #7477: in a project view a long title pushed the
@@ -104,10 +112,10 @@ class HeaderLayoutHostComponent {
 // against the real CSS this is not a corner -- play + add-task + focus + the
 // overflow trigger plus the title's floor stop fitting somewhere under a
 // ~1050px window with the right panel open, and at 600-730px with just the
-// default side nav. `_reflow` bails at `count === ids.length` and, before the
+// default side nav. The fit runs out of things to demote and, before the
 // scroll floor, the row simply ran off an edge nothing in the ancestor chain
 // can scroll (`.main-content` is `overflow: hidden`) -- issue #9480 exactly.
-// `action-nav-right--scrolls` is the class `_reflow` sets on reaching that
+// `action-nav-right--scrolls` is the class `needsScrollFloor` sets in that
 // state; this host hard-codes it because the CSS is what is under test here.
 @Component({
   standalone: true,
@@ -174,35 +182,50 @@ class WindowControlsHostComponent {}
 // `src/styles.scss`, which is where the 40px/48px button boxes come from) and
 // the specs below compare the two. A stylesheet change that outgrows
 // `readHeaderTokens` fails here instead of silently mis-sizing the row.
-// Mirrors the shipped row: the pinned group, the counters group, then singles
-// that reach the flex container directly because their component hosts are
-// `display: contents`, and the trigger as a sibling of the scroller. The point
-// is that all of it is one uninterrupted gap chain, which is what lets the fit
-// add a row up from button counts alone.
+// Mirrors the shipped row, with the REAL action components in it — that is the
+// point. The arithmetic assumes every action is one `--header-button-size` box
+// on one gap chain, and the three components whose hosts are not
+// `display: contents` are exactly where that could stop being true: `play-button`
+// hangs `.play-btn-wrapper` with `margin: 0 6px`, cancelled only by a
+// `::ng-deep` rule in this component's own stylesheet, and `focus-button` and
+// `simple-counter-button` size themselves from the token. Stand-in buttons here
+// would test the stylesheet against itself and let all three drift silently.
 @Component({
   standalone: true,
-  imports: [MatIconButton, MatMiniFabButton, MatIcon],
+  imports: [
+    MatIconButton,
+    MatIcon,
+    PlayButtonComponent,
+    FocusButtonComponent,
+    SimpleCounterButtonComponent,
+  ],
   styleUrls: ['./main-header.component.scss'],
   template: `
     <div class="wrapper">
       <nav class="action-nav-right">
         <div class="action-nav-scroll">
           <div class="header-action-group primary-action-group">
-            <button
-              mat-mini-fab
-              class="play-btn"
-            >
-              <mat-icon>play_arrow</mat-icon>
-            </button>
+            <play-button
+              [currentTask]="null"
+              [currentTaskId]="null"
+              [currentTaskContext]="null"
+              [hasTrackableTasks]="true"
+            ></play-button>
             <button mat-icon-button><mat-icon>add</mat-icon></button>
           </div>
           <div class="header-action-group secondary-action-group counters-action-group">
-            <button mat-icon-button><mat-icon>bolt</mat-icon></button>
-            <button mat-icon-button><mat-icon>timer</mat-icon></button>
+            <focus-button></focus-button>
+            <div data-slot="counters">
+              <simple-counter-button [simpleCounter]="counter"></simple-counter-button>
+            </div>
           </div>
-          <button mat-icon-button><mat-icon>sync</mat-icon></button>
-          <button mat-icon-button><mat-icon>schedule</mat-icon></button>
-          <button mat-icon-button><mat-icon>comment</mat-icon></button>
+          <div data-slot="sync">
+            <button mat-icon-button><mat-icon>sync</mat-icon></button>
+          </div>
+          <div data-slot="panelButtons">
+            <button mat-icon-button><mat-icon>schedule</mat-icon></button>
+            <button mat-icon-button><mat-icon>comment</mat-icon></button>
+          </div>
         </div>
         <button
           mat-icon-button
@@ -214,10 +237,16 @@ class WindowControlsHostComponent {}
     </div>
   `,
 })
-class TokenPinHostComponent {}
-
-/** Every action button the host above renders, the play button included. */
-const PIN_HOST_BUTTONS = 8;
+class TokenPinHostComponent {
+  readonly counter = {
+    id: 'c1',
+    title: 'Counter',
+    isOn: false,
+    type: SimpleCounterType.StopWatch,
+    countOnDay: {},
+    icon: 'timer',
+  } as unknown as SimpleCounter;
+}
 
 const WINDOW_CONTROL_BODY_CLASSES = ['isElectron', 'isNoMac', 'isObsidianStyleHeader'];
 
@@ -225,10 +254,53 @@ describe('MainHeaderComponent layout', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [
+        TranslateModule.forRoot(),
         HeaderLayoutHostComponent,
         PinnedOverflowHostComponent,
         WindowControlsHostComponent,
         TokenPinHostComponent,
+      ],
+      // The pin host renders the real action components, so their services have
+      // to resolve — but nothing here reads them: the specs measure boxes.
+      providers: [
+        { provide: Store, useValue: { select: () => EMPTY, dispatch: () => undefined } },
+        {
+          provide: TaskService,
+          useValue: {
+            currentTaskId: signal(null),
+            currentTask$: EMPTY,
+            currentTaskProgress$: EMPTY,
+          },
+        },
+        { provide: NavigateToTaskService, useValue: { navigate: () => undefined } },
+        { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => EMPTY }) } },
+        { provide: MetricService, useValue: { getFocusSummaryForDay: () => null } },
+        { provide: DateService, useValue: { todayStr: () => '2026-06-09' } },
+        {
+          provide: GlobalConfigService,
+          useValue: { cfg: signal({ keyboard: {} }), pomodoroConfig: signal({}) },
+        },
+        {
+          provide: FocusModeService,
+          useValue: {
+            isSessionRunning: signal(false),
+            isSessionPaused: signal(false),
+            isBreakActive: signal(false),
+            isLongBreak: signal(false),
+            progress: signal(0),
+            timeRemaining: signal(0),
+            sessionDuration: signal(0),
+            mode: signal(null),
+            currentCycle: signal(1),
+            focusModeConfig: signal({}),
+          },
+        },
+        { provide: SimpleCounterService, useValue: { enabledSimpleCounters$: EMPTY } },
+        {
+          provide: GlobalTrackingIntervalService,
+          useValue: { tick$: EMPTY, todayDateStr$: of('2026-06-09') },
+        },
+        { provide: BannerService, useValue: { open: () => undefined } },
       ],
     }).compileComponents();
   });
@@ -269,9 +341,12 @@ describe('MainHeaderComponent layout', () => {
       expect(rect('button[mat-icon-button]').width).toBe(tokens.btn);
     });
 
-    it('sizes the play button exactly as --header-play-size says', () => {
-      expect(tokens.play).toBeGreaterThan(0);
-      expect(rect('button[mat-mini-fab]').width).toBe(tokens.play);
+    // The play button is a `mat-mini-fab`, and Material advertises a bigger box
+    // for those than for an icon button. It does not get one here, and the fit
+    // counts it as one ordinary action — so this is the assertion that would
+    // catch it if that ever changed.
+    it('lays the play button out on the same box as every other action', () => {
+      expect(rect('button[mat-mini-fab]').width).toBe(tokens.btn);
     });
 
     it('spaces buttons and groups exactly as the gap tokens say', () => {
@@ -295,7 +370,7 @@ describe('MainHeaderComponent layout', () => {
     // allowed to measure.
     it('lays a run of buttons out at exactly runWidth()', () => {
       expect(rect('.primary-action-group').width).toBe(
-        tokens.play + tokens.gap + tokens.btn,
+        runWidth(2, tokens.btn, tokens.gap),
       );
       expect(rect('.counters-action-group').width).toBe(
         runWidth(2, tokens.btn, tokens.gap),
@@ -308,12 +383,24 @@ describe('MainHeaderComponent layout', () => {
     // separator, and play's extra width over a plain action. Nest the buttons
     // differently and this is the spec that fails.
     it('adds a whole row up from its button count alone', () => {
+      // Counted off the DOM rather than written down, so adding an action to
+      // the host above cannot quietly make this assert the wrong width.
+      const buttons = host.querySelectorAll('nav.action-nav-right button').length;
       const predicted =
-        runWidth(PIN_HOST_BUTTONS, tokens.btn, tokens.gap) +
-        (tokens.play - tokens.btn) +
-        (tokens.groupGap - tokens.gap);
+        runWidth(buttons, tokens.btn, tokens.gap) + (tokens.groupGap - tokens.gap);
 
+      expect(buttons).toBe(8);
       expect(rect('nav.action-nav-right').width).toBe(predicted);
+    });
+
+    // The slot wrappers are the reason a slot of N buttons is still N links of
+    // the row's one gap chain: they space with the same gap the row does. Take
+    // that away and the arithmetic above is wrong by one gap per slot.
+    it('makes a slot cost exactly what its buttons cost', () => {
+      expect(rect('[data-slot="panelButtons"]').width).toBe(
+        runWidth(2, tokens.btn, tokens.gap),
+      );
+      expect(rect('[data-slot="sync"]').width).toBe(runWidth(1, tokens.btn, tokens.gap));
     });
   });
 
@@ -567,7 +654,14 @@ describe('MainHeaderComponent focus button visibility', () => {
         { provide: DateService, useValue: { todayStr: () => '2026-06-09' } },
         { provide: UserProfileService, useValue: { isInitialized: () => false } },
         { provide: ConflictJournalService, useValue: { unreviewedCount: signal(0) } },
-        { provide: FocusModeService, useValue: { isSessionRunning: signal(false) } },
+        {
+          provide: FocusModeService,
+          useValue: {
+            isSessionRunning: signal(false),
+            isSessionPaused: signal(false),
+            isBreakActive: signal(false),
+          },
+        },
         // `createComponent()` builds the component outside a component
         // injector, where neither its own `providers` nor a host element
         // exist. The specs that use it only read placement rules, so an
@@ -618,8 +712,8 @@ describe('MainHeaderComponent focus button visibility', () => {
     component = createComponent();
 
     // The add button lives in the bottom nav's FAB on mobile, not the header.
-    expect(component.showAddTaskInline()).toBe(false);
-    expect(component.showFocusInline()).toBe(true);
+    expect(component.overflow.showAddTaskInline()).toBe(false);
+    expect(component.overflow.showFocusInline()).toBe(true);
   });
 
   it('hides the focus button when the app feature is disabled', () => {
@@ -630,7 +724,7 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     component = createComponent();
 
-    expect(component.showFocusInline()).toBe(false);
+    expect(component.overflow.showFocusInline()).toBe(false);
   });
 
   // These mount the real component into the live DOM at a fixed width and let
@@ -656,18 +750,20 @@ describe('MainHeaderComponent focus button visibility', () => {
 
   /**
    * Let the fit settle. It is a `computed()`, so there is nothing to wait out —
-   * but the width that feeds it arrives from a ResizeObserver, which the
-   * browser delivers on its own schedule. A couple of turns is enough; the
-   * reflow this replaced needed twelve, one per demotable action plus the
-   * 120ms a widening spent waiting before it dared re-offer anything.
+   * only the width that feeds it, which arrives from a ResizeObserver. The
+   * reflow this replaced needed twelve turns of a 20ms timer: one per demotable
+   * action, plus the 120ms a widening spent waiting before it dared re-offer
+   * anything.
    */
   const settle = async (): Promise<void> => {
-    const appRef = TestBed.inject(ApplicationRef);
-    for (let i = 0; i < 4; i++) {
-      await new Promise((r) => setTimeout(r, 20));
-      appRef.tick();
-      await fixture!.whenStable();
-    }
+    // Two frames, not a sleep: ResizeObserver callbacks are delivered after
+    // layout and before paint, so a frame having passed is a guarantee rather
+    // than a guess — and a slow CI box cannot turn a timing assumption into a
+    // failure.
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    TestBed.inject(ApplicationRef).tick();
+    await fixture!.whenStable();
   };
 
   /** Resize the mounted header and let the reflow settle again. */
