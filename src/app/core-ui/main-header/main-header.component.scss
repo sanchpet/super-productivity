@@ -263,6 +263,9 @@ button.isActive2 {
       padding-inline-start: 8px;
       margin-block: -8px;
       scrollbar-width: none;
+      // Horizontal overscroll here would otherwise reach the platform's
+      // back-gesture, which is a steep price for flicking a button row.
+      overscroll-behavior-x: contain;
 
       &::-webkit-scrollbar {
         display: none;

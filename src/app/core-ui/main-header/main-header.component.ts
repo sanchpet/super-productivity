@@ -459,6 +459,12 @@ export class MainHeaderComponent implements OnDestroy {
    * subtree that overlay restores focus into, dropping focus to `<body>`. That
    * is the same case `_isInsidePanel` already keeps the panel open for.
    *
+   * Closing parks focus on the trigger before `inert` lands. That is as far as
+   * this can go on its own: an action that widens the header — a panel toggle,
+   * typically — empties the overflow and the trigger's own `@if` then removes
+   * the element focus is standing on, so focus still ends up on `<body>`.
+   * Pre-existing, and not something dismissing later would avoid.
+   *
    * An explicit marker rather than probing for `aria-haspopup`, because that
    * attribute answers "does this announce a popup?" and not "will this restore
    * focus into me later" — `mat-menu` sets it, `MatDialog` does not, and a
