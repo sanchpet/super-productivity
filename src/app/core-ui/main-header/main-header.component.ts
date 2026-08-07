@@ -35,9 +35,7 @@ import { SimpleCounterButtonComponent } from '../../features/simple-counter/simp
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { LongPressDirective } from '../../ui/longpress/longpress.directive';
 import { isOnline$ } from '../../util/is-online';
-import { Store } from '@ngrx/store';
 import { DataInitStateService } from '../../core/data-init/data-init-state.service';
-import { showFocusOverlay } from '../../features/focus-mode/store/focus-mode.actions';
 import { SyncStatus } from '../../op-log/sync-exports';
 import { PluginHeaderBtnsComponent } from '../../plugins/ui/plugin-header-btns.component';
 import { PluginWorkContextHeaderBtnsComponent } from '../../plugins/ui/plugin-work-context-header-btns.component';
@@ -46,8 +44,6 @@ import { PageTitleComponent } from './page-title/page-title.component';
 import { PlayButtonComponent } from './play-button/play-button.component';
 import { DesktopPanelButtonsComponent } from './desktop-panel-buttons/desktop-panel-buttons.component';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { MetricService } from '../../features/metric/metric.service';
-import { DateService } from '../../core/date/date.service';
 import { UserProfileButtonComponent } from '../../features/user-profile/user-profile-button/user-profile-button.component';
 import { FocusButtonComponent } from './focus-button/focus-button.component';
 import { UserProfileService } from '../../features/user-profile/user-profile.service';
@@ -138,10 +134,7 @@ export class MainHeaderComponent implements OnDestroy {
   readonly globalConfigService = inject(GlobalConfigService);
   private readonly _snackService = inject(SnackService);
   private readonly _router = inject(Router);
-  private readonly _store = inject(Store);
   private readonly _configService = inject(GlobalConfigService);
-  private readonly _metricService = inject(MetricService);
-  private readonly _dateService = inject(DateService);
   private readonly _dataInitStateService = inject(DataInitStateService);
   private readonly _conflictJournal = inject(ConflictJournalService);
 
@@ -156,7 +149,6 @@ export class MainHeaderComponent implements OnDestroy {
   T: typeof T = T;
 
   isXs = this.layoutService.isXs;
-  isXxxs = this.layoutService.isXxxs;
 
   // Add-task and the panel buttons are not "demoted" on small screens, they
   // *live somewhere else*: the bottom nav owns the add FAB and the panels menu.
@@ -213,9 +205,6 @@ export class MainHeaderComponent implements OnDestroy {
     this.syncWrapperService.superSyncIsConfirmedInSync$,
     { initialValue: false },
   );
-  focusModeConfig = toSignal(
-    this.globalConfigService.cfg$.pipe(map((cfg) => cfg?.focusMode)),
-  );
   isOnline = toSignal(isOnline$);
   // State-aware tooltip for the sync button: the icon alone (sync_problem /
   // wifi_off) signals a problem but never explains it. Surfacing the state in
@@ -242,9 +231,6 @@ export class MainHeaderComponent implements OnDestroy {
     }
     return T.MH.TRIGGER_SYNC;
   });
-  focusSummaryToday = computed(() =>
-    this._metricService.getFocusSummaryForDay(this._dateService.todayStr()),
-  );
   readonly isTimeTrackingEnabled = computed(() => {
     return this.globalConfigService.appFeatures().isTimeTrackingEnabled;
   });
@@ -1005,10 +991,6 @@ export class MainHeaderComponent implements OnDestroy {
         this.dialogSyncCfgRef = null;
       }),
     );
-  }
-
-  enableFocusMode(): void {
-    this._store.dispatch(showFocusOverlay());
   }
 
   /** Accent the trigger while a demoted counter is still running. */

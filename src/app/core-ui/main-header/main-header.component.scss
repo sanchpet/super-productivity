@@ -134,11 +134,18 @@ button.isActive2 {
   &:empty {
     display: none;
   }
+
+  // A separator only where there is something to separate from. A trailing
+  // group pays nothing, which matters in exactly the state where a dozen
+  // pixels decide whether the row still fits.
+  &:not(:last-child) {
+    margin-inline-end: calc(
+      var(--header-action-group-gap) - var(--header-nav-button-gap)
+    );
+  }
 }
 
 .primary-action-group {
-  margin-inline-end: calc(var(--header-action-group-gap) - var(--header-nav-button-gap));
-
   ::ng-deep play-button .play-btn-wrapper {
     margin: 0;
   }
@@ -157,22 +164,6 @@ button.isActive2 {
 
     &:is(:hover, :focus-visible):not(:disabled) {
       color: var(--text-color);
-    }
-  }
-}
-
-.counters-action-group {
-  margin-inline-end: calc(var(--header-action-group-gap) - var(--header-nav-button-gap));
-
-  ::ng-deep button {
-    width: 36px;
-    height: 36px;
-
-    .mat-icon {
-      font-size: 20px;
-      width: 20px;
-      height: 20px;
-      line-height: 20px;
     }
   }
 }
@@ -267,8 +258,13 @@ button.isActive2 {
   // EXPERIMENT: vertical action strip styles live in src/styles.scss so they
   // bypass Angular view encapsulation (and any containing-block surprises
   // from this file). See `nav.action-nav-right` rules there.
+}
 
-  // Keep every header action on the same compact icon grid.
+// Keep every header action on the same compact icon grid, wherever it is
+// mounted. Scoped to both mount points rather than to `:host`, because the
+// page title's own buttons are deliberately not on this grid.
+.action-nav-right,
+.header-overflow-panel {
   ::ng-deep button:not(.sync-btn) .mat-icon:not(.sync-state-ico) {
     font-size: 20px;
     width: 20px;
