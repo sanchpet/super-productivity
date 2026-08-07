@@ -36,6 +36,7 @@ import { ConflictJournalService } from '../../op-log/sync/conflict-journal.servi
 import { MatIconButton, MatMiniFabButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { HeaderTokens, readHeaderTokens, runWidth } from './overflow/header-tokens';
+import { HeaderOverflowService } from './overflow/header-overflow.service';
 
 // Regression test for #7477: in a project view a long title pushed the
 // right-side header actions (simple-counter / habit buttons) off screen.
@@ -172,6 +173,11 @@ class WindowControlsHostComponent {}
 // `src/styles.scss`, which is where the 40px/48px button boxes come from) and
 // the specs below compare the two. A stylesheet change that outgrows
 // `readHeaderTokens` fails here instead of silently mis-sizing the row.
+// Mirrors the shipped row: the pinned group, the counters group, then singles
+// that reach the flex container directly because their component hosts are
+// `display: contents`, and the trigger as a sibling of the scroller. The point
+// is that all of it is one uninterrupted gap chain, which is what lets the fit
+// add a row up from button counts alone.
 @Component({
   standalone: true,
   imports: [MatIconButton, MatMiniFabButton, MatIcon],
@@ -179,23 +185,38 @@ class WindowControlsHostComponent {}
   template: `
     <div class="wrapper">
       <nav class="action-nav-right">
-        <div class="header-action-group primary-action-group">
-          <button
-            mat-mini-fab
-            class="play-btn"
-          >
-            <mat-icon>play_arrow</mat-icon>
-          </button>
-          <button mat-icon-button><mat-icon>add</mat-icon></button>
+        <div class="action-nav-scroll">
+          <div class="header-action-group primary-action-group">
+            <button
+              mat-mini-fab
+              class="play-btn"
+            >
+              <mat-icon>play_arrow</mat-icon>
+            </button>
+            <button mat-icon-button><mat-icon>add</mat-icon></button>
+          </div>
+          <div class="header-action-group secondary-action-group counters-action-group">
+            <button mat-icon-button><mat-icon>bolt</mat-icon></button>
+            <button mat-icon-button><mat-icon>timer</mat-icon></button>
+          </div>
+          <button mat-icon-button><mat-icon>sync</mat-icon></button>
+          <button mat-icon-button><mat-icon>schedule</mat-icon></button>
+          <button mat-icon-button><mat-icon>comment</mat-icon></button>
         </div>
-        <div class="header-action-group secondary-action-group">
-          <button mat-icon-button><mat-icon>bolt</mat-icon></button>
-        </div>
+        <button
+          mat-icon-button
+          class="header-overflow-btn"
+        >
+          <mat-icon>more_horiz</mat-icon>
+        </button>
       </nav>
     </div>
   `,
 })
 class TokenPinHostComponent {}
+
+/** Every action button the host above renders, the play button included. */
+const PIN_HOST_BUTTONS = 8;
 
 const WINDOW_CONTROL_BODY_CLASSES = ['isElectron', 'isNoMac', 'isObsidianStyleHeader'];
 
@@ -275,9 +296,23 @@ describe('MainHeaderComponent layout', () => {
       expect(rect('.primary-action-group').width).toBe(
         tokens.play + tokens.gap + tokens.btn,
       );
-      expect(rect('.secondary-action-group').width).toBe(
-        runWidth(1, tokens.btn, tokens.gap),
+      expect(rect('.counters-action-group').width).toBe(
+        runWidth(2, tokens.btn, tokens.gap),
       );
+    });
+
+    // The claim the whole fit rests on: groups, singles and the trigger form
+    // one uninterrupted gap chain, so a row of N buttons is runWidth(N) wide
+    // whatever boxes they happen to be nested in — plus the one group
+    // separator, and play's extra width over a plain action. Nest the buttons
+    // differently and this is the spec that fails.
+    it('adds a whole row up from its button count alone', () => {
+      const predicted =
+        runWidth(PIN_HOST_BUTTONS, tokens.btn, tokens.gap) +
+        (tokens.play - tokens.btn) +
+        (tokens.groupGap - tokens.gap);
+
+      expect(rect('nav.action-nav-right').width).toBe(predicted);
     });
   });
 
@@ -531,13 +566,18 @@ describe('MainHeaderComponent focus button visibility', () => {
         { provide: DateService, useValue: { todayStr: () => '2026-06-09' } },
         { provide: UserProfileService, useValue: { isInitialized: () => false } },
         { provide: ConflictJournalService, useValue: { unreviewedCount: signal(0) } },
+        // `createComponent()` builds the component outside a component
+        // injector, where neither its own `providers` nor a host element
+        // exist. The specs that use it only read placement rules, so an
+        // unattached element is enough: the service finds no `.wrapper`, never
+        // records a width, and reports nothing demoted.
+        HeaderOverflowService,
+        { provide: ElementRef, useValue: new ElementRef(document.createElement('div')) },
       ],
     }).overrideComponent(MainHeaderComponent, {
       set: {
         // NgTemplateOutlet is real, not stubbed: the sync button is mounted
-        // through it, and a stubbed outlet would leave `[data-slot="sync"]`
-        // empty -- a slot the reflow measures at zero and would then have no
-        // recorded width to restore it by.
+        // through it, and a stubbed outlet would leave the sync slot empty.
         imports: [TranslatePipe, NgTemplateOutlet],
         schemas: [NO_ERRORS_SCHEMA],
       },
@@ -591,38 +631,19 @@ describe('MainHeaderComponent focus button visibility', () => {
     expect(component.isFocusButtonVisible()).toBe(false);
   });
 
-  // The fit is measured, not predicted, so these mount the real component into
-  // the live DOM at a fixed width and let the browser lay it out. Every earlier
-  // version of this logic was unit-tested against injected widths and every one
-  // of them shipped a bug where the arithmetic disagreed with the CSS (#9480).
-  // The child components are stubbed here (NO_ERRORS_SCHEMA), so they measure
-  // zero and nothing would ever overflow. Give each slot a known width instead:
-  // that is the input the reflow reads in production too, so the algorithm --
-  // measure, demote one, re-measure, settle -- is exercised for real while the
-  // numbers stay under the test's control.
-  const SLOT_TEST_W = 200;
-  let styleEl: HTMLStyleElement | undefined;
+  // These mount the real component into the live DOM at a fixed width and let
+  // the browser lay it out. Nothing here fakes a width any more: the fit adds
+  // the row up from how many buttons each action contributes, and those counts
+  // come from the same stubbed services production reads, so the only input the
+  // test controls is how much room the header gets. Earlier versions injected a
+  // width per slot because the fit measured them — and every one of the bugs
+  // #9480 went through was that injected number disagreeing with the CSS.
   let box: HTMLElement | undefined;
 
-  const mountAtWidth = async (width: number, slotCss?: string): Promise<HTMLElement> => {
+  const mountAtWidth = async (width: number): Promise<HTMLElement> => {
     configureTestBed();
     fixture = TestBed.createComponent(MainHeaderComponent);
     const host = fixture.nativeElement as HTMLElement;
-    styleEl = document.createElement('style');
-    // Only the slots this configuration actually populates. A blanket rule
-    // would also inflate the empty wrappers (no plugins, no counters here) and
-    // measure widths that do not exist in production.
-    styleEl.textContent =
-      slotCss ??
-      `[data-slot="panelButtons"],[data-slot="sync"]` +
-        `{min-width:${SLOT_TEST_W}px !important}` +
-        // In production an unpopulated plugin wrapper measures exactly 0: its
-        // two children are `display: contents` and produce no boxes, so there
-        // are no flex items and the wrapper's `gap` never applies. The stubs
-        // here ARE boxes, so without this the empty wrapper would measure one
-        // gap (4px) and mask the zero-width case the reflow has to survive.
-        `[data-slot="pluginHeader"]{gap:0 !important}`;
-    document.head.appendChild(styleEl);
     box = document.createElement('div');
     box.style.width = `${width}px`;
     document.body.appendChild(box);
@@ -632,15 +653,15 @@ describe('MainHeaderComponent focus button visibility', () => {
   };
 
   /**
-   * Let the fit settle. The reflow runs on an animation frame (never inside
-   * change detection -- writing from a render hook is what NG0103 forbids), and
-   * is woken by a ResizeObserver or an effect, so ticking alone would never see
-   * it. Frames have to actually pass: one per demotable action, plus the
-   * `REOFFER_DELAY_MS` a widening waits out before re-offering, plus margin.
+   * Let the fit settle. It is a `computed()`, so there is nothing to wait out —
+   * but the width that feeds it arrives from a ResizeObserver, which the
+   * browser delivers on its own schedule. A couple of turns is enough; the
+   * reflow this replaced needed twelve, one per demotable action plus the
+   * 120ms a widening spent waiting before it dared re-offer anything.
    */
   const settle = async (): Promise<void> => {
     const appRef = TestBed.inject(ApplicationRef);
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 20));
       appRef.tick();
       await fixture!.whenStable();
@@ -654,9 +675,7 @@ describe('MainHeaderComponent focus button visibility', () => {
   };
 
   afterEach(() => {
-    styleEl?.remove();
     box?.remove();
-    styleEl = undefined;
     box = undefined;
   });
 
@@ -797,10 +816,10 @@ describe('MainHeaderComponent focus button visibility', () => {
     // came from, now without an empty wrapper spending a gap to get there.
     expect(host.querySelector('[data-slot="pluginHeader"]')).toBeFalsy();
 
-    // The plugin arrives while the header is already collapsed, and now has
-    // real buttons in it.
-    styleEl!.textContent += `[data-slot="pluginHeader"]{min-width:${SLOT_TEST_W}px !important}`;
-    pluginHeaderButtons.set([{ label: 'x', icon: 'x', onClick: () => {} }]);
+    // The plugin arrives while the header is already collapsed.
+    pluginHeaderButtons.set(
+      Array.from({ length: 4 }, () => ({ label: 'x', icon: 'x', onClick: () => {} })),
+    );
     await resizeTo(320);
     expect(host.querySelector('[data-slot="pluginHeader"]')).toBeFalsy();
 
@@ -826,40 +845,25 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     // Narrow enough that the row genuinely overflows, so the demote branch is
     // reached and the guard is what stops it -- not a lack of pressure.
-    // Both boxed to the same 40px an icon button really is -- the stubbed
-    // `mat-icon` renders its ligature as literal text, so an unconstrained slot
-    // would measure the width of the word "sync_disabled" instead.
-    const host = await mountAtWidth(
-      50,
-      `[data-slot="sync"],.header-overflow-btn` +
-        `{width:40px !important;min-width:40px !important;` +
-        `max-width:40px !important;overflow:hidden !important}`,
-    );
+    const host = await mountAtWidth(50);
 
     expect(host.querySelector('[data-slot="sync"]')).toBeTruthy();
     expect(host.querySelector('.header-overflow-btn')).toBeFalsy();
   });
 
   it('re-fits when a slot grows without changing which slots exist (#9480)', async () => {
-    // `_demotableIds` compares by id, so one plugin button becoming two leaves
-    // it identical -- and the header's own width does not change either, so the
-    // ResizeObserver never fires. Nothing re-measured, which is exactly the
-    // case the reporter says gets worse "with every enabled simple counter".
+    // One plugin button becoming several leaves the set of demotable actions
+    // identical, and the header's own width does not change either -- so the
+    // ResizeObserver never fires and the old model never re-measured. This is
+    // the case the reporter says gets worse "with every enabled simple
+    // counter". Counts are a direct input to the fit now, so the row re-fits
+    // for the same reason it fits at all.
     const btn = { label: 'x', icon: 'x', onClick: () => {} };
     pluginHeaderButtons.set([btn]);
-    const host = await mountAtWidth(
-      520,
-      `[data-slot="pluginHeader"]{min-width:100px !important}` +
-        `[data-slot="panelButtons"],[data-slot="sync"]{min-width:100px !important}`,
-    );
+    const host = await mountAtWidth(560);
     expect(host.querySelector('.header-overflow-btn')).toBeFalsy();
 
-    // The plugin adds a second button: same slot, more width.
-    styleEl!.textContent = styleEl!.textContent!.replace(
-      '[data-slot="pluginHeader"]{min-width:100px !important}',
-      '[data-slot="pluginHeader"]{min-width:400px !important}',
-    );
-    pluginHeaderButtons.set([btn, btn]);
+    pluginHeaderButtons.set(Array.from({ length: 8 }, () => btn));
     await settle();
 
     expect(host.querySelector('.header-overflow-btn')).toBeTruthy();
@@ -886,13 +890,10 @@ describe('MainHeaderComponent focus button visibility', () => {
 
   it('engages the scroll floor when even the pinned actions do not fit (#9480)', async () => {
     // Everything demotable leaves and the row is still over-wide -- the state
-    // the floor exists for, and the only one that may pay its clip. The pinned
-    // group is widened here because the stubbed children measure nothing.
-    const host = await mountAtWidth(
-      320,
-      `[data-slot="panelButtons"],[data-slot="sync"]{min-width:200px !important}` +
-        `.primary-action-group{min-width:400px !important}`,
-    );
+    // the floor exists for, and the only one that may pay its clip. Play,
+    // add-task, focus and the trigger are four buttons plus a separator, so
+    // nothing above ~190px can hold them however much it demotes.
+    const host = await mountAtWidth(150);
     const nav = host.querySelector('nav.action-nav-right') as HTMLElement;
     const scroller = host.querySelector('.action-nav-scroll') as HTMLElement;
 
@@ -902,6 +903,58 @@ describe('MainHeaderComponent focus button visibility', () => {
     // holds beside them stays put.
     expect(getComputedStyle(scroller).overflowX).toBe('auto');
     expect(getComputedStyle(nav).overflowX).toBe('visible');
+  });
+
+  /** Which demotable actions are currently in the bar. */
+  const inlineSlots = (host: HTMLElement): string[] =>
+    Array.from(host.querySelectorAll('nav.action-nav-right [data-slot]')).map(
+      (el) => (el as HTMLElement).dataset.slot as string,
+    );
+
+  it('lands on the same row whichever width it was resized from', async () => {
+    // The old model could not promise this. Its answer depended on what was
+    // rendered when it looked, and the only way it could uncollapse was to put
+    // every demoted action back inline for a frame and re-measure — so the same
+    // width could settle differently depending on how it got there, and the
+    // frame in between is what the header visibly flickered.
+    const host = await mountAtWidth(1400);
+    await resizeTo(320);
+    const arrivedFromWide = inlineSlots(host);
+
+    await resizeTo(150);
+    await resizeTo(320);
+
+    expect(inlineSlots(host)).toEqual(arrivedFromWide);
+  });
+
+  it('rebuilds nothing while the header is resized within one regime', async () => {
+    // Dragging the right-panel divider or the side nav walks the header through
+    // dozens of widths. Re-offering on each one tore down and rebuilt every
+    // demoted component — including `simple-counter-button`, which owns its
+    // countdown subscription, so a drag could restart a running counter's
+    // pipeline. Nothing here crosses a demotion threshold, so nothing should be
+    // rebuilt at all.
+    const host = await mountAtWidth(300);
+    const nav = host.querySelector('nav.action-nav-right') as HTMLElement;
+    const before = inlineSlots(host);
+
+    let mutations = 0;
+    const observer = new MutationObserver((records) => {
+      mutations += records.length;
+    });
+    observer.observe(nav, { childList: true, subtree: true });
+    for (const width of [310, 320, 330, 340, 350, 340, 330, 320, 310, 300]) {
+      await resizeTo(width);
+    }
+    expect(inlineSlots(host)).toEqual(before);
+    expect(mutations).toBe(0);
+
+    // ...and the observer is watching the right node: crossing a threshold
+    // does rebuild the row, so the zero above is a result, not a wiring bug.
+    await resizeTo(1400);
+    observer.disconnect();
+    expect(inlineSlots(host)).not.toEqual(before);
+    expect(mutations).toBeGreaterThan(0);
   });
 
   it('keeps the add-task button in the bar at any width (#9480)', async () => {

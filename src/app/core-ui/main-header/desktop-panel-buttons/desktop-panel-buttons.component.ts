@@ -13,6 +13,20 @@ import { LayoutService } from '../../layout/layout.service';
 import { T } from '../../../t.const';
 import { KeyboardConfig } from '@sp/keyboard-config';
 import { GlobalConfigService } from '../../../features/config/global-config.service';
+import { AppFeaturesConfig } from '../../../features/config/global-config.model';
+
+/**
+ * How many buttons this component renders for a given feature set.
+ *
+ * The header owes the action row this many, and works it out without an
+ * instance — a demoted copy is not where the row's width comes from. Lives
+ * beside the `@if`s it mirrors so the two cannot drift apart unnoticed, and is
+ * pinned against the rendered DOM by this component's spec.
+ */
+export const desktopPanelButtonCount = (af: AppFeaturesConfig): number =>
+  (af.isScheduleDayPanelEnabled ? 1 : 0) +
+  (af.isIssuesPanelEnabled ? 1 : 0) +
+  (af.isProjectNotesEnabled ? 1 : 0);
 
 @Component({
   selector: 'desktop-panel-buttons',

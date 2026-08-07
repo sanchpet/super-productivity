@@ -1,8 +1,14 @@
 <!--
   Actions that do not fit move into the overflow panel below, in the order set
-  by DEMOTION_ORDER. Each demotable action is wrapped in a `[data-slot]` element
-  so the reflow pass can measure what it actually costs instead of predicting it
-  from copied CSS constants (#9480).
+  by DEMOTION_ORDER (#9480).
+
+  The `[data-slot]` boxes name each demotable action. They are no longer there
+  to be measured — HeaderOverflowService adds the row up from button counts —
+  but they keep each action's buttons together under one flag, and because they
+  space with the same `--header-nav-button-gap` the row does, a slot of N
+  buttons stays exactly N links of the row's one gap chain. That is the property
+  the arithmetic rests on, and `main-header.component.spec` asserts it against a
+  real rendering.
 -->
 <div class="wrapper">
   @if (isDataLoaded()) {

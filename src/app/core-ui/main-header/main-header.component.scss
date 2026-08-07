@@ -162,18 +162,17 @@ button.isActive2 {
   &:empty {
     display: none;
   }
-
-  // A separator only where there is something to separate from. A trailing
-  // group pays nothing, which matters in exactly the state where a dozen
-  // pixels decide whether the row still fits.
-  &:not(:last-child) {
-    margin-inline-end: calc(
-      var(--header-action-group-gap) - var(--header-nav-button-gap)
-    );
-  }
 }
 
 .primary-action-group {
+  // The row's one visual break: play and add-task, then everything else at the
+  // plain button gap. Unconditional rather than `:not(:last-child)`, because
+  // the fit adds this term by arithmetic and a structural selector would make
+  // it depend on which actions happen to be inline. The only state where it
+  // over-reserves is a row holding nothing but this group, which is already the
+  // state the scroll floor exists for.
+  margin-inline-end: calc(var(--header-action-group-gap) - var(--header-nav-button-gap));
+
   ::ng-deep play-button .play-btn-wrapper {
     margin: 0;
   }
