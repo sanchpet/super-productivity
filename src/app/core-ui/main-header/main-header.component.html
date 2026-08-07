@@ -203,13 +203,22 @@
       ></desktop-panel-buttons>
     }
 
+    <!-- A counter is pressed repeatedly and shows its own count / elapsed time
+         on the button, so dismissing on each press would make this tray the
+         opposite of what it is for: counting to five would be ten taps, and a
+         stopwatch's label would vanish the moment it is started. Long-pressing
+         one also opens a dialog, which dismissing would drop focus out of.
+         See onDemotedActionClick. -->
     @if (isDemotedCounters()) {
       @for (
         simpleCounter of enabledSimpleCounters();
         track trackById($index, simpleCounter)
       ) {
         @if (!simpleCounter.isHideButton) {
-          <simple-counter-button [simpleCounter]="simpleCounter"></simple-counter-button>
+          <simple-counter-button
+            data-keeps-overflow-open
+            [simpleCounter]="simpleCounter"
+          ></simple-counter-button>
         }
       }
     }

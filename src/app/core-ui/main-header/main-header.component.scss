@@ -6,15 +6,6 @@
   display: block;
   position: relative;
   user-select: none;
-  // The row's own width is what its contents have to fit into — not the
-  // window's, which the side nav and the right panel both narrow away from
-  // (#9480). Named rather than anonymous so a child states which box it means;
-  // `page-title` sizes its floor against this. `inline-size` only: the header's
-  // height still comes from its contents, and inline-size containment is also
-  // what guarantees a child's container-driven width can never feed back into
-  // the header's own — so `_reflow` cannot oscillate against it.
-  container-type: inline-size;
-  container-name: main-header;
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
   --header-button-size: 40px;

@@ -227,24 +227,6 @@ describe('MainHeaderComponent layout', () => {
     }
   });
 
-  // `page-title` sizes its floor with `@container main-header (...)`, and the
-  // container is declared in a different file. Nothing links the two but the
-  // name, and if it were dropped those rules would stop matching silently --
-  // the title would keep the phone floor everywhere and the row would demote
-  // earlier than it needs to, with no test failing on the wiring itself.
-  it('declares the container the title sizes against', () => {
-    const fixture = TestBed.createComponent(WindowControlsHostComponent);
-    document.body.appendChild(fixture.nativeElement);
-    try {
-      fixture.detectChanges();
-      const style = getComputedStyle(fixture.nativeElement as HTMLElement);
-      expect(style.containerName).toBe('main-header');
-      expect(style.containerType).toBe('inline-size');
-    } finally {
-      document.body.removeChild(fixture.nativeElement);
-    }
-  });
-
   it('drops the window-controls reserve while the right panel is open', () => {
     // Setup inside the `try`: these body classes gate real CSS, so leaking them
     // on a throw would silently apply a 140px reserve to every later fixture.
@@ -664,6 +646,31 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     // A click that really is elsewhere still dismisses it.
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await settle();
+    expect(header.isOverflowOpen()).toBe(false);
+  });
+
+  it('dismisses the panel when a demoted action is used, unless it is marked', async () => {
+    // Using a demoted action closes the tray, the way picking from a menu
+    // does. The exception is a control the panel template marks: one that
+    // opens an overlay restoring focus into a subtree about to go `inert`, or
+    // one pressed repeatedly with its own readout, where dismissing per press
+    // would make the tray the opposite of what it is for.
+    const host = await mountAtWidth(220);
+    const header = fixture!.componentInstance;
+    const panel = host.querySelector('.header-overflow-panel') as HTMLElement;
+
+    const plain = document.createElement('button');
+    const marked = document.createElement('button');
+    marked.setAttribute('data-keeps-overflow-open', '');
+    panel.append(plain, marked);
+
+    header.isOverflowOpen.set(true);
+    marked.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle();
+    expect(header.isOverflowOpen()).toBe(true);
+
+    plain.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await settle();
     expect(header.isOverflowOpen()).toBe(false);
   });

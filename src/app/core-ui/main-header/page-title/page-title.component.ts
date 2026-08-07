@@ -139,31 +139,24 @@ import { KeyboardConfig } from '@sp/keyboard-config';
            floor below. */
         flex-shrink: 999;
 
-        /* How much of the context name has to survive. The title is the first
-           thing in the header row to shrink, so this floor is also what decides
-           when header actions start moving into the overflow panel:
-           MainHeaderComponent reads this value back with getComputedStyle
-           rather than restating it in TypeScript (#9480). On a phone there is
-           no room for both a full name and the actions, so the name yields
-           further. */
-        min-width: 84px;
+        /* No floor: the box is exactly as wide as the name in it, so the
+           buttons that follow sit directly beside the name instead of after a
+           run of empty box. A floor padded every short title -- "Today"
+           measures ~75px against a 160px floor, i.e. 77px of nothing before
+           the project-menu button.
+
+           Nothing is lost by dropping it. The title is the first thing in the
+           row to shrink (flex-shrink: 999 above), so the floor only ever bound
+           when the row was already tight -- and yielding there is the stated
+           priority (#7477). MainHeaderComponent reads this value back with
+           getComputedStyle, so its fit model follows automatically: it now owes
+           the title nothing and demotes an action only once the actions
+           themselves stop fitting. */
+        min-width: 0;
 
         @media (min-width: 600px) {
           padding-left: 0;
           padding-right: var(--s);
-
-          /* The roomier floor, but only where the row can afford it — and the
-             row is the HEADER, not the window. main-header sits inside
-             .main-content, which the in-flow side nav and the right panel both
-             narrow (#9480), so a viewport query handed a 420px header the same
-             floor as a 1500px one and the action nav was left a few pixels
-             wide with every button, overflow trigger included, outside it.
-             Still nested in the viewport query: below it there is no side nav
-             in flow, so the header IS the window, and the phone floor above is
-             a deliberate choice rather than a measurement error. */
-          @container main-header (min-width: 500px) {
-            min-width: 160px;
-          }
         }
 
         &:focus {
@@ -212,32 +205,6 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         gap: var(--s-quarter);
         margin-left: calc(-1 * var(--s));
         margin-right: var(--s2);
-      }
-
-      /* Too narrow to hold identity and actions at once, so identity yields
-         entirely: the action row holds the only route to everything already
-         demoted, and a name is no use if nothing can be acted on. Both rules
-         live in one block so the threshold cannot drift between them — and
-         after both base rules, since each matches at the same specificity and
-         would otherwise lose on source order.
-
-         300px is an observed tuning point rather than a derivation: it is
-         where the row stops being able to seat an overflow trigger beside a
-         floored title and these buttons. The e2e width sweep pins it; see
-         main-header-overflow.spec.ts. */
-      @container main-header (max-width: 299px) {
-        .page-title {
-          min-width: 0;
-        }
-
-        /* The first two are reachable elsewhere (the work-context menu also
-           opens from the side nav; the customizer has its own shortcut and the
-           mobile bottom panel). "Open in Plainspace" is not — but it is already
-           hidden below a 350px viewport by isXxxs, so this widens an accepted
-           trade rather than making a new one. */
-        .page-title-actions {
-          display: none;
-        }
       }
 
       .project-settings-btn {

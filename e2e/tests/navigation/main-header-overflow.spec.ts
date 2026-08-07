@@ -53,7 +53,7 @@ test.describe('main header overflow with the right panel', () => {
     workViewPage,
   }) => {
     await workViewPage.waitForTaskList();
-    await page.setViewportSize({ width: 1100, height: 860 });
+    await page.setViewportSize({ width: 1000, height: 860 });
     await openNotesPanel(page);
 
     // The row must actually fit. A header that has demoted an action and still
@@ -75,7 +75,7 @@ test.describe('main header overflow with the right panel', () => {
     workViewPage,
   }) => {
     await workViewPage.waitForTaskList();
-    await page.setViewportSize({ width: 1100, height: 860 });
+    await page.setViewportSize({ width: 1000, height: 860 });
     await openNotesPanel(page);
 
     await page.locator('.header-overflow-btn').click();
@@ -85,6 +85,11 @@ test.describe('main header overflow with the right panel', () => {
     await panel.locator('.e2e-toggle-schedule-day-panel').click();
     await expect(panel).not.toHaveClass(/isVisible/);
   });
+
+  // The exemption to that rule -- a control marked `data-keeps-overflow-open`
+  // -- needs a demoted counter or profile button to exist, which the default
+  // e2e profile has neither of. Covered as a unit test instead; see
+  // main-header.component.spec.ts.
 
   /**
    * The band the first fix missed. Below ~760px the panel has hit its own
@@ -97,45 +102,64 @@ test.describe('main header overflow with the right panel', () => {
    * one drift. One test rather than one per width: the setup is identical and
    * booting the fixture three times buys nothing.
    *
-   * Stops at 720 on purpose. Under about 700 the panel keeps ~270px of a
-   * shrinking content area (`_handleWindowResize` stops clamping once half the
-   * content area falls under `MIN_WIDTH`), so the header box itself drops below
-   * one button — 71px at a 601px window. No demotion or placement can put a
-   * 40px control inside a 71px header; that is right-panel sizing, not this
-   * row, and asserting it here would pin the wrong component.
+   * Stops at 800 on purpose. Below that the header's width stops being a
+   * function of the window: the right panel only re-clamps itself inside a
+   * throttled, double-rAF resize handler and gives up entirely once half the
+   * content area falls under its own `MIN_WIDTH`, so under rapid resizes it
+   * keeps ~320px of a shrinking row and the header lands anywhere from 190px to
+   * 140px. At 140px no demotion or placement can seat a 40px control beside the
+   * title's frame and its buttons. That is right-panel sizing, not this row —
+   * asserting it here would pin the wrong component and flake doing it.
    */
   test('keeps the overflow trigger reachable as the window narrows', async ({
     page,
     workViewPage,
   }) => {
     await workViewPage.waitForTaskList();
-    await page.setViewportSize({ width: 1100, height: 860 });
+    await page.setViewportSize({ width: 1000, height: 860 });
     await openNotesPanel(page);
 
-    for (const width of [900, 800, 720]) {
+    for (const width of [900, 800]) {
       await page.setViewportSize({ width, height: 860 });
       await expectTriggerInView(page);
     }
   });
 
   /**
-   * The title's roomier floor is keyed to the header's width, but the header IS
-   * the window once the side nav leaves the flow, so the phone floor has to
-   * survive that. Regression guard: keying it to the container alone silently
-   * doubled the floor on a 560px phone.
+   * The title box is sized by its name, not by a floor, so the buttons that
+   * follow it sit against the name rather than after a run of empty box. A
+   * 160px floor used to pad every short title: "Today" measures ~75px, leaving
+   * 77px of nothing before the project-menu button.
    */
-  test('keeps the phone title floor when the header spans the whole window', async ({
+  test('keeps the title buttons against the title, at any width', async ({
     page,
     workViewPage,
   }) => {
     await workViewPage.waitForTaskList();
-    await page.setViewportSize({ width: 560, height: 860 });
-    await expect(page.locator('mobile-bottom-nav')).toBeVisible();
 
-    const floor = await page.evaluate(() => {
-      const title = document.querySelector('main-header .page-title') as HTMLElement;
-      return parseFloat(getComputedStyle(title).minWidth);
-    });
-    expect(floor).toBeLessThanOrEqual(84);
+    for (const width of [1400, 1100, 900]) {
+      await page.setViewportSize({ width, height: 860 });
+      await expect(async () => {
+        const gap = await page.evaluate(() => {
+          const header = document.querySelector('main-header') as HTMLElement;
+          const text = header.querySelector('.page-title-text') as HTMLElement | null;
+          const actions = header.querySelector(
+            '.page-title-actions',
+          ) as HTMLElement | null;
+          if (!text || !actions) {
+            return null;
+          }
+          return Math.round(
+            actions.getBoundingClientRect().left - text.getBoundingClientRect().right,
+          );
+        });
+        expect(gap, `no title actions rendered at ${width}px`).not.toBeNull();
+        // A few px of designed spacing is fine; a floor's worth of dead box
+        // is what this guards against.
+        expect(gap!, `dead space before the title buttons at ${width}px`).toBeLessThan(
+          16,
+        );
+      }).toPass({ timeout: 10000 });
+    }
   });
 });

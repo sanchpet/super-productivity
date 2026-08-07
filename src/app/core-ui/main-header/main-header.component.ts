@@ -454,10 +454,12 @@ export class MainHeaderComponent implements OnDestroy {
    * the same way picking anything from a `mat-menu` closes it. Without this the
    * panel stays open over the content after every tap.
    *
-   * Except where the panel template marks a control as opening something of its
-   * own (`data-keeps-overflow-open`): closing here would apply `inert` to the
-   * subtree that overlay restores focus into, dropping focus to `<body>`. That
-   * is the same case `_isInsidePanel` already keeps the panel open for.
+   * Except where the panel template marks a control `data-keeps-overflow-open`,
+   * for either of two reasons: it opens an overlay of its own, and closing
+   * would apply `inert` to the subtree that overlay restores focus into (the
+   * same case `_isInsidePanel` already keeps the panel open for); or it is
+   * pressed repeatedly and carries its own readout, like a counter, where
+   * dismissing on each press defeats the tray.
    *
    * Closing parks focus on the trigger before `inert` lands. That is as far as
    * this can go on its own: an action that widens the header — a panel toggle,
@@ -626,7 +628,7 @@ export class MainHeaderComponent implements OnDestroy {
       (parseFloat(style.paddingLeft) || 0) -
       (parseFloat(style.paddingRight) || 0);
     const title = wrapper.querySelector('.page-title') as HTMLElement | null;
-    const titleMinW = title ? parseFloat(getComputedStyle(title).minWidth) || 0 : 0;
+    const titleMinW = title ? this._shrinkFloor(title) : 0;
     // The title's own action buttons do not shrink either, so they are owed in
     // full — measured, because which of them render varies by breakpoint, and
     // measured as a margin box, because that one carries margins and a rect
@@ -701,6 +703,27 @@ export class MainHeaderComponent implements OnDestroy {
       // floor is the only thing left that keeps the buttons reachable.
       this.needsScrollFloor.set(true);
     }
+  }
+
+  /**
+   * The narrowest this element can be squeezed to — its `min-width`, or its own
+   * padding and borders if those are wider.
+   *
+   * Reading `min-width` alone is the trap: it says how far the author allows
+   * the box to shrink, not how far the box *can*. A flex item never shrinks
+   * below its padding and borders, so `min-width: 0` on a box with 8px of
+   * padding still owes the row 8px — and reporting 0 there hands the fit exactly
+   * that much slack it does not have, which is enough to call an overflowing row
+   * a fit and leave the overflow trigger hanging over a clip edge.
+   */
+  private _shrinkFloor(el: HTMLElement): number {
+    const s = getComputedStyle(el);
+    const frame =
+      (parseFloat(s.paddingLeft) || 0) +
+      (parseFloat(s.paddingRight) || 0) +
+      (parseFloat(s.borderLeftWidth) || 0) +
+      (parseFloat(s.borderRightWidth) || 0);
+    return Math.max(parseFloat(s.minWidth) || 0, frame);
   }
 
   /**
