@@ -8,9 +8,12 @@ import { HeaderTokens, runWidth } from './header-tokens';
  * a task — and the overflow trigger, which is the only route to everything
  * that did leave.
  *
- * Sync yields before the trigger appears rather than after, because the trigger
- * republishes its state (see `demotedSyncState`): a broken sync is still
- * visible from the collapsed row, so nothing is lost by collapsing it.
+ * The three at the end all carry state the user is meant to notice without
+ * opening anything, so they go last and the trigger republishes what they were
+ * showing: a conflict badge and an error/offline condition for sync
+ * (`demotedSyncState`), a running counter or focus session as an accent
+ * (`isDemotedCounterRunning`, `isDemotedFocusRunning`). Focus is last of all —
+ * it only leaves a row that is already out of room.
  */
 export type DemotableId =
   | 'pluginHeader'
@@ -18,7 +21,8 @@ export type DemotableId =
   | 'sidePanelBtns'
   | 'panelButtons'
   | 'counters'
-  | 'sync';
+  | 'sync'
+  | 'focus';
 
 export const DEMOTION_ORDER: readonly DemotableId[] = [
   'pluginHeader',
@@ -27,6 +31,7 @@ export const DEMOTION_ORDER: readonly DemotableId[] = [
   'panelButtons',
   'counters',
   'sync',
+  'focus',
 ];
 
 /** Sub-pixel slop, so a fractional layout width never reads as an overflow. */

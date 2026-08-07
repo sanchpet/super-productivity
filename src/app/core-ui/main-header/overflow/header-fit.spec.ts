@@ -26,7 +26,12 @@ const input = (over: Partial<FitInput> = {}): FitInput => ({
 });
 
 /** What a row of n buttons costs under TOKENS, primary group included. */
-const row = (buttons: number): number => buttons * 44 - 4 + 12;
+const row = (buttons: number): number => {
+  const perButton = TOKENS.btn + TOKENS.gap;
+  const withTrailingGap = buttons * perButton;
+  const separator = TOKENS.groupGap - TOKENS.gap;
+  return withTrailingGap - TOKENS.gap + separator;
+};
 
 describe('solveFit', () => {
   it('demotes nothing when the whole row fits', () => {
@@ -123,8 +128,14 @@ describe('solveFit', () => {
     expect(twice[0]).toEqual(twice[1]);
   });
 
-  it('has a slot count matching the demotion order', () => {
-    expect(DEMOTION_ORDER.length).toBe(6);
+  it('names every demotable action exactly once', () => {
     expect(new Set(DEMOTION_ORDER).size).toBe(DEMOTION_ORDER.length);
+  });
+
+  it('gives up the focus button last of all', () => {
+    // It carries a live countdown, so it only leaves a row that has already
+    // given up everything else — and the trigger has to say so when it does
+    // (see isDemotedFocusRunning).
+    expect(DEMOTION_ORDER[DEMOTION_ORDER.length - 1]).toBe('focus');
   });
 });

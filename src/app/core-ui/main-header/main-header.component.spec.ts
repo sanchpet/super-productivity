@@ -37,6 +37,7 @@ import { MatIconButton, MatMiniFabButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { HeaderTokens, readHeaderTokens, runWidth } from './overflow/header-tokens';
 import { HeaderOverflowService } from './overflow/header-overflow.service';
+import { FocusModeService } from '../../features/focus-mode/focus-mode.service';
 
 // Regression test for #7477: in a project view a long title pushed the
 // right-side header actions (simple-counter / habit buttons) off screen.
@@ -566,6 +567,7 @@ describe('MainHeaderComponent focus button visibility', () => {
         { provide: DateService, useValue: { todayStr: () => '2026-06-09' } },
         { provide: UserProfileService, useValue: { isInitialized: () => false } },
         { provide: ConflictJournalService, useValue: { unreviewedCount: signal(0) } },
+        { provide: FocusModeService, useValue: { isSessionRunning: signal(false) } },
         // `createComponent()` builds the component outside a component
         // injector, where neither its own `providers` nor a host element
         // exist. The specs that use it only read placement rules, so an
@@ -617,7 +619,7 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     // The add button lives in the bottom nav's FAB on mobile, not the header.
     expect(component.showAddTaskInline()).toBe(false);
-    expect(component.isFocusButtonVisible()).toBe(true);
+    expect(component.showFocusInline()).toBe(true);
   });
 
   it('hides the focus button when the app feature is disabled', () => {
@@ -628,7 +630,7 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     component = createComponent();
 
-    expect(component.isFocusButtonVisible()).toBe(false);
+    expect(component.showFocusInline()).toBe(false);
   });
 
   // These mount the real component into the live DOM at a fixed width and let
@@ -833,15 +835,18 @@ describe('MainHeaderComponent focus button visibility', () => {
 
   it('does not demote a slot that is no wider than the trigger it adds (#9480)', async () => {
     // On a phone the bottom nav owns add-task, the panel buttons and the
-    // side-panel buttons, so a default install with no plugins, no user
-    // profiles and no counters has exactly ONE demotable action: sync. Every
+    // side-panel buttons, so with focus mode off and no plugins, profiles or
+    // counters this install has exactly ONE demotable action: sync. Every
     // header action is a 40px icon button and so is the overflow trigger, so
     // demoting it removes 40px and immediately adds 40px back -- reclaiming
     // nothing while hiding the app's only persistent sync indicator behind a
-    // tap. The row is still overflowing afterwards, and `count === ids.length`
-    // stops the loop, so it is not even a step towards a fix.
+    // tap.
     isXs = signal(true);
     isXxxs = signal(true);
+    appFeatures = signal({
+      ...DEFAULT_GLOBAL_CONFIG.appFeatures,
+      isFocusModeEnabled: false,
+    });
 
     // Narrow enough that the row genuinely overflows, so the demote branch is
     // reached and the guard is what stops it -- not a lack of pressure.

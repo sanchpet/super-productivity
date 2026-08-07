@@ -30,7 +30,6 @@ import { MatIcon } from '@angular/material/icon';
 import { MatBadge } from '@angular/material/badge';
 import { MatTooltip } from '@angular/material/tooltip';
 import { NgTemplateOutlet } from '@angular/common';
-import { PluginBridgeService } from '../../plugins/plugin-bridge.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { SimpleCounterButtonComponent } from '../../features/simple-counter/simple-counter-button/simple-counter-button.component';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
@@ -51,6 +50,7 @@ import { UserProfileService } from '../../features/user-profile/user-profile.ser
 import { EmlDropDirective } from '../../core/drop-paste-input/eml-drop.directive';
 import { ConflictJournalService } from '../../op-log/sync/conflict-journal.service';
 import { HeaderOverflowService } from './overflow/header-overflow.service';
+import { FocusModeService } from '../../features/focus-mode/focus-mode.service';
 
 @Component({
   selector: 'main-header',
@@ -96,6 +96,7 @@ export class MainHeaderComponent implements OnDestroy {
   private readonly _configService = inject(GlobalConfigService);
   private readonly _dataInitStateService = inject(DataInitStateService);
   private readonly _conflictJournal = inject(ConflictJournalService);
+  private readonly _focusModeService = inject(FocusModeService);
 
   readonly isDataLoaded = toSignal(this._dataInitStateService.isAllDataLoadedInitially$, {
     initialValue: false,
@@ -193,12 +194,8 @@ export class MainHeaderComponent implements OnDestroy {
   readonly isTimeTrackingEnabled = computed(() => {
     return this.globalConfigService.appFeatures().isTimeTrackingEnabled;
   });
-  readonly isFocusModeEnabled = computed(() => {
-    return this.globalConfigService.appFeatures().isFocusModeEnabled;
-  });
   // Keep the focus entry point visible on mobile too when the feature is enabled.
   // Otherwise Android users can only discover focus mode by rotating to a wider layout (#8157).
-  readonly isFocusButtonVisible = computed(() => this.isFocusModeEnabled());
   readonly isSyncIconEnabled = computed(() => {
     return this.globalConfigService.appFeatures().isSyncIconEnabled;
   });
@@ -241,6 +238,7 @@ export class MainHeaderComponent implements OnDestroy {
   readonly isDemotedPanelBtns = this.overflow.isDemotedPanelBtns;
   readonly isDemotedCounters = this.overflow.isDemotedCounters;
   readonly isDemotedSync = this.overflow.isDemotedSync;
+  readonly isDemotedFocus = this.overflow.isDemotedFocus;
 
   readonly showPluginBtnsInline = this.overflow.showPluginBtnsInline;
   readonly showUserProfileInline = this.overflow.showUserProfileInline;
@@ -248,6 +246,7 @@ export class MainHeaderComponent implements OnDestroy {
   readonly showPanelBtnsInline = this.overflow.showPanelBtnsInline;
   readonly showCountersInline = this.overflow.showCountersInline;
   readonly showSyncInline = this.overflow.showSyncInline;
+  readonly showFocusInline = this.overflow.showFocusInline;
   readonly showAddTaskInline = this.overflow.showAddTaskInline;
 
   readonly isOverflowOpen = signal(false);
@@ -434,6 +433,15 @@ export class MainHeaderComponent implements OnDestroy {
   /** Accent the trigger while a demoted counter is still running. */
   readonly isDemotedCounterRunning = computed(
     () => this.isDemotedCounters() && this.enabledSimpleCounters().some((c) => c.isOn),
+  );
+
+  /**
+   * Same, for a focus session. Focus only leaves a row that is already out of
+   * room, but when it does it takes a live countdown with it, so the trigger
+   * has to keep saying that something is running.
+   */
+  readonly isDemotedFocusRunning = computed(
+    () => this.isDemotedFocus() && this._focusModeService.isSessionRunning(),
   );
 
   // Sync is the one demotable action carrying state the user is meant to notice

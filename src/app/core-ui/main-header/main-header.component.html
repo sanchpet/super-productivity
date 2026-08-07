@@ -63,8 +63,10 @@
 
       @if (isDataLoaded()) {
         <div class="header-action-group secondary-action-group counters-action-group">
-          <!-- Focus button: keep the entry point discoverable on desktop and mobile. -->
-          @if (isFocusButtonVisible()) {
+          <!-- Focus button: keep the entry point discoverable on desktop and
+               mobile. Last in DEMOTION_ORDER, so it only leaves a row that has
+               already given up everything else. -->
+          @if (showFocusInline()) {
             <focus-button></focus-button>
           }
           @if (showCountersInline()) {
@@ -139,7 +141,11 @@
         class="header-overflow-btn secondary-header-action"
         [class.is-error]="demotedSyncState() === 'error'"
         [class.is-offline]="demotedSyncState() === 'offline'"
-        [color]="!demotedSyncState() && isDemotedCounterRunning() ? 'accent' : ''"
+        [color]="
+          !demotedSyncState() && (isDemotedCounterRunning() || isDemotedFocusRunning())
+            ? 'accent'
+            : ''
+        "
         [matBadge]="demotedConflictCount()"
         [matBadgeHidden]="demotedConflictCount() === 0"
         matBadgeColor="accent"
@@ -231,6 +237,12 @@
 
     @if (isDemotedSync()) {
       <ng-container [ngTemplateOutlet]="syncBtnTpl"></ng-container>
+    }
+
+    <!-- Opens the focus overlay, which takes over the screen, so the panel
+         closing behind it is exactly right. -->
+    @if (isDemotedFocus()) {
+      <focus-button></focus-button>
     }
   </div>
 }

@@ -108,6 +108,7 @@ export class HeaderOverflowService {
       panelButtons: mobile ? 0 : desktopPanelButtonCount(af),
       counters: this._enabledCounters().filter((c) => !c.isHideButton).length,
       sync: af.isSyncIconEnabled ? 1 : 0,
+      focus: af.isFocusModeEnabled ? 1 : 0,
     };
     return new Map(
       DEMOTION_ORDER.filter((id) => counts[id] > 0).map((id) => [id, counts[id]]),
@@ -130,13 +131,9 @@ export class HeaderOverflowService {
       const hasPlay =
         this._isDataLoaded() && this._config.appFeatures().isTimeTrackingEnabled;
       const hasAddTask = this.showAddTaskInline();
-      // Focus is pinned alongside them, but sits in its own group, so it is a
-      // button the row owes without being a reason the pinned group exists.
-      const hasFocus =
-        this._isDataLoaded() && this._config.appFeatures().isFocusModeEnabled;
       return solveFit({
         budget,
-        pinnedButtons: (hasPlay ? 1 : 0) + (hasAddTask ? 1 : 0) + (hasFocus ? 1 : 0),
+        pinnedButtons: (hasPlay ? 1 : 0) + (hasAddTask ? 1 : 0),
         hasPlayButton: hasPlay,
         hasPrimaryGroup: hasPlay || hasAddTask,
         slotButtons: [...slots.values()],
@@ -191,6 +188,7 @@ export class HeaderOverflowService {
   readonly isDemotedPanelBtns = this._isDemoted('panelButtons');
   readonly isDemotedCounters = this._isDemoted('counters');
   readonly isDemotedSync = this._isDemoted('sync');
+  readonly isDemotedFocus = this._isDemoted('focus');
 
   readonly showPluginBtnsInline = this._isInline('pluginHeader');
   readonly showUserProfileInline = this._isInline('userProfile');
@@ -198,6 +196,7 @@ export class HeaderOverflowService {
   readonly showPanelBtnsInline = this._isInline('panelButtons');
   readonly showCountersInline = this._isInline('counters');
   readonly showSyncInline = this._isInline('sync');
+  readonly showFocusInline = this._isInline('focus');
 
   constructor() {
     afterNextRender(() => this._observe());
