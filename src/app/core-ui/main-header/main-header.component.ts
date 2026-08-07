@@ -454,15 +454,25 @@ export class MainHeaderComponent implements OnDestroy {
    * the same way picking anything from a `mat-menu` closes it. Without this the
    * panel stays open over the content after every tap.
    *
-   * Except when the control opens something of its own — `user-profile-button`
-   * is a menu trigger, and closing here would apply `inert` to the subtree its
-   * menu restores focus into, dropping focus to `<body>`. That is the same case
-   * `_isInsidePanel` already keeps the panel open for.
+   * Except where the panel template marks a control as opening something of its
+   * own (`data-keeps-overflow-open`): closing here would apply `inert` to the
+   * subtree that overlay restores focus into, dropping focus to `<body>`. That
+   * is the same case `_isInsidePanel` already keeps the panel open for.
+   *
+   * An explicit marker rather than probing for `aria-haspopup`, because that
+   * attribute answers "does this announce a popup?" and not "will this restore
+   * focus into me later" — `mat-menu` sets it, `MatDialog` does not, and a
+   * plugin's button could set it without the header having any say.
    */
   onDemotedActionClick(ev: Event): void {
     const target = ev.target instanceof Element ? ev.target : null;
     const control = target?.closest('button, a');
-    if (!control || control.closest('[aria-haspopup]')) {
+    // Bounded to the panel, so an attribute that later appears on some ancestor
+    // cannot silently switch the whole behaviour off.
+    if (
+      !control ||
+      control.closest('.header-overflow-panel [data-keeps-overflow-open]')
+    ) {
       return;
     }
     this._closeOverflow(true);
@@ -613,13 +623,10 @@ export class MainHeaderComponent implements OnDestroy {
     const titleMinW = title ? parseFloat(getComputedStyle(title).minWidth) || 0 : 0;
     // The title's own action buttons do not shrink either, so they are owed in
     // full — measured, because which of them render varies by breakpoint, and
-    // measured with their margins, because that box carries
-    // `margin-left: -8px; margin-right: 16px` and a rect stops at the border
-    // box. The missing 8px is not slop: with the right panel open at a 1100px
-    // window the balance lands at +4 without it and -4 with it, so the fit
-    // called it a fit while the row overflowed by 4px — and what hangs over the
-    // clip edge is the overflow trigger itself, the nav's last child and the
-    // only route to everything already demoted.
+    // measured as a margin box, because that one carries margins and a rect
+    // stops at the border box. Single-digit pixels decide this: the epsilon
+    // below is 1, so a missed margin is enough to call an overflowing row a fit
+    // and hang the overflow trigger over a clip edge nothing can scroll.
     const titleActions = wrapper.querySelector(
       '.page-title-actions',
     ) as HTMLElement | null;
@@ -691,14 +698,14 @@ export class MainHeaderComponent implements OnDestroy {
   }
 
   /**
-   * Border-box width plus horizontal margins — what the title's action box
-   * actually costs the row. The other measurements here read plain rects
-   * because nothing else in the row carries margins; the nav spaces itself with
-   * `gap`.
+   * Border-box width plus horizontal margins — what an element actually costs
+   * the row. A rect stops at the border box, and two things in this row carry
+   * margins: the title's action box, and the action groups' trailing
+   * `margin-inline-end`.
    *
-   * A `display: none` box has no rect but still reports its margins, and this
-   * one's happen to sum to +8 — so the narrow breakpoint that hides it would
-   * otherwise leave the fit paying for a box that is not there.
+   * A `display: none` box has no rect but still reports its margins, so the
+   * breakpoints that hide one would otherwise leave the fit paying for a box
+   * that is not there.
    */
   private _outerWidth(el: HTMLElement): number {
     const rect = el.getBoundingClientRect();
@@ -724,42 +731,47 @@ export class MainHeaderComponent implements OnDestroy {
    * that has to decide whether to engage the floor at all.
    *
    * The actions are the stable answer: they never shrink (`flex-shrink: 0`), so
-   * the span from the leftmost to the rightmost is what the row is asking for
-   * while clamped, in LTR and in RTL. Zero-area elements (an unpopulated slot,
-   * or anything `display: contents`) are skipped rather than dragging the span
-   * to the viewport origin.
+   * summing their margin boxes and the gaps between them is what the row is
+   * asking for in every state, LTR and RTL. Zero-area elements (an unpopulated
+   * slot, a hidden one) contribute nothing.
    *
-   * The one state the span cannot answer is a scrolled `.action-nav-scroll`:
-   * its children are translated by `scrollLeft`, so the span collapses by
-   * exactly the amount that is hidden. Its own `scrollWidth` is the term that
-   * survives that — and it is also the one that includes the bleed padding the
-   * floor adds. The trigger lives outside that box, so it is added separately,
-   * with the gap between the two.
+   * Margin boxes rather than border boxes because the action groups carry a
+   * trailing `margin-inline-end`. It lands between the groups while a
+   * `[data-slot]` is still inline, but once every slot has been demoted the
+   * last group is last, and its 12px falls outside any span of border boxes —
+   * against a 1px epsilon, in precisely the state where the fit is deciding
+   * whether to engage the scroll floor.
+   *
+   * `scrollWidth` still counts once the inner box is a real scroll container:
+   * it is the term that carries the bleed padding the floor adds. (Not for
+   * scroll position — a span of rects is invariant under `scrollLeft`, since
+   * every child translates together and rects are not clipped by an ancestor.)
+   * The trigger lives outside that box, so it is added separately with its gap.
    */
   private _intrinsicNavWidth(nav: HTMLElement): number {
     const scroller = nav.querySelector<HTMLElement>(':scope > .action-nav-scroll');
-    const actions = scroller ? Array.from(scroller.children) : [];
-    let left = Infinity;
-    let right = -Infinity;
-    for (const kid of actions) {
-      const r = kid.getBoundingClientRect();
-      if (!r.width && !r.height) {
+    // Both the flattened (`display: contents`) and the scrolling layout space
+    // these by the same token, so one read answers for either.
+    const gap = parseFloat(getComputedStyle(nav).columnGap) || 0;
+
+    let sum = 0;
+    let count = 0;
+    for (const kid of scroller ? Array.from(scroller.children) : []) {
+      const w = this._outerWidth(kid as HTMLElement);
+      if (!w) {
         continue;
       }
-      left = Math.min(left, r.left);
-      right = Math.max(right, r.right);
+      sum += w;
+      count++;
     }
-    const actionsW = Math.max(
-      scroller?.scrollWidth ?? 0,
-      right > left ? right - left : 0,
-    );
+    const gaps = gap * Math.max(0, count - 1);
+    const actionsW = Math.max(scroller?.scrollWidth ?? 0, sum + gaps);
 
     const trigger = nav.querySelector<HTMLElement>(':scope > .header-overflow-btn');
     if (!trigger) {
       return actionsW;
     }
-    const gap = actionsW ? parseFloat(getComputedStyle(nav).columnGap) || 0 : 0;
-    return actionsW + gap + trigger.getBoundingClientRect().width;
+    return actionsW + (actionsW ? gap : 0) + trigger.getBoundingClientRect().width;
   }
 
   /**
@@ -814,15 +826,20 @@ export class MainHeaderComponent implements OnDestroy {
       } else if (widened) {
         this._scheduleReoffer();
       } else {
-        // A pending re-offer was scheduled against a width that no longer
-        // exists, and running it would re-derive the whole row from zero — the
-        // expensive direction, mid-resize. It is not hypothetical: the panel's
-        // slide starts with one widening delivery (the Electron window-controls
-        // reserve drops the instant the panel opens) followed by a run of
-        // narrowing frames, so the timer would fire inside the animation and
-        // rebuild every demoted component, restarting the countdown a demoted
-        // `simple-counter-button` owns.
-        this._cancelReoffer();
+        // Push a pending re-offer out rather than letting it fire against a
+        // width that has already moved on: re-deriving the row from zero is the
+        // expensive direction, and mid-resize it is also wasted. Any widening
+        // followed by narrowing frames hits this — the panel slide starts with
+        // one (the window-controls reserve drops the instant the panel opens),
+        // and so does overshooting a divider drag.
+        //
+        // Pushed out, never dropped. `_restartReflow(false)` can only ever
+        // raise the demoted count, so cancelling here would strand a row that
+        // ends its gesture wider than it started with actions it no longer
+        // needs to hide, and nothing pending to offer them back.
+        if (this._reofferTimeout !== undefined) {
+          this._scheduleReoffer();
+        }
         this._restartReflow(false);
       }
     });

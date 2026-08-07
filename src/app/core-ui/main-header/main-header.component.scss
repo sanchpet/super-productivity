@@ -8,12 +8,13 @@
   user-select: none;
   // The row's own width is what its contents have to fit into — not the
   // window's, which the side nav and the right panel both narrow away from
-  // (#9480). Named rather than anonymous so a child states which box it means.
-  // `inline-size` only: the header's height still comes from its contents, and
-  // inline-size containment is also what guarantees a child's container-driven
-  // width can never feed back into the header's own — so `_reflow` cannot
-  // oscillate against it.
-  container: main-header / inline-size;
+  // (#9480). Named rather than anonymous so a child states which box it means;
+  // `page-title` sizes its floor against this. `inline-size` only: the header's
+  // height still comes from its contents, and inline-size containment is also
+  // what guarantees a child's container-driven width can never feed back into
+  // the header's own — so `_reflow` cannot oscillate against it.
+  container-type: inline-size;
+  container-name: main-header;
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
   --header-button-size: 40px;
@@ -238,9 +239,7 @@ button.isActive2 {
     // it and gives every other state its ink back.
     //
     // The clip is on `.action-nav-scroll`, never on the nav, so the overflow
-    // trigger stays outside it: it is the only route to every demoted action,
-    // so it must not be the button that scrolls away — and being a sibling, it
-    // never has to be painted on top of the buttons it sits beside.
+    // trigger stays outside it — see the template for why that matters.
     &.action-nav-right--scrolls > .action-nav-scroll {
       display: flex;
       align-items: center;

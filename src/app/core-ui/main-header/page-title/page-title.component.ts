@@ -166,14 +166,6 @@ import { KeyboardConfig } from '@sp/keyboard-config';
           }
         }
 
-        /* Narrower than the title's floor plus its own buttons plus one
-           overflow trigger, so something has to go and it must not be the
-           trigger — that is the only route to every action already demoted.
-           Identity yields completely here; the actions stay. */
-        @container main-header (max-width: 299px) {
-          min-width: 0;
-        }
-
         &:focus {
           outline: none;
         }
@@ -220,14 +212,30 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         gap: var(--s-quarter);
         margin-left: calc(-1 * var(--s));
         margin-right: var(--s2);
+      }
 
-        /* ...but "never shrinks" stops being tenable once the row is narrower
-           than these buttons plus one overflow trigger: they would claim their
-           full width and leave the trigger nothing. Both are reachable
-           elsewhere (the context menu on the background, and the customizer's
-           own shortcut), the trigger is not. Same threshold as the title's
-           floor above, so the two yield together. */
-        @container main-header (max-width: 299px) {
+      /* Too narrow to hold identity and actions at once, so identity yields
+         entirely: the action row holds the only route to everything already
+         demoted, and a name is no use if nothing can be acted on. Both rules
+         live in one block so the threshold cannot drift between them — and
+         after both base rules, since each matches at the same specificity and
+         would otherwise lose on source order.
+
+         300px is an observed tuning point rather than a derivation: it is
+         where the row stops being able to seat an overflow trigger beside a
+         floored title and these buttons. The e2e width sweep pins it; see
+         main-header-overflow.spec.ts. */
+      @container main-header (max-width: 299px) {
+        .page-title {
+          min-width: 0;
+        }
+
+        /* The first two are reachable elsewhere (the work-context menu also
+           opens from the side nav; the customizer has its own shortcut and the
+           mobile bottom panel). "Open in Plainspace" is not — but it is already
+           hidden below a 350px viewport by isXxxs, so this widens an accepted
+           trade rather than making a new one. */
+        .page-title-actions {
           display: none;
         }
       }

@@ -16,10 +16,13 @@
     <!--
       Everything except the overflow trigger. `display: contents` normally, so
       this box costs the row nothing; it becomes a real scroll container only
-      once the row cannot fit even its pinned actions. Keeping the trigger
-      OUTSIDE it is the point: the trigger is the only route to every demoted
-      action, so it must never be the thing that scrolls out of view — and a
-      sibling never has to be drawn on top of the buttons beside it.
+      once the row cannot fit even its pinned actions.
+
+      Keeping the trigger OUTSIDE it is the whole point, and the invariant the
+      rest of this feature rests on: the trigger is the only route to every
+      demoted action, so it must never be the thing that scrolls out of view.
+      A sibling also never has to be painted on top of the buttons beside it.
+      Everywhere else that touches this only points back here.
     -->
     <div class="action-nav-scroll">
       <div class="header-action-group primary-action-group">
@@ -180,8 +183,10 @@
       <plugin-header-btns></plugin-header-btns>
     }
 
+    <!-- Opens a menu that restores focus into itself on close, so using it must
+         NOT dismiss the panel out from under it (see onDemotedActionClick). -->
     @if (isDemotedUserProfile()) {
-      <user-profile-button></user-profile-button>
+      <user-profile-button data-keeps-overflow-open></user-profile-button>
     }
 
     @if (isDemotedSidePanelBtns()) {

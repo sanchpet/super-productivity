@@ -92,29 +92,31 @@ test.describe('main header overflow with the right panel', () => {
    * header — and the title's floor plus its non-shrinking action buttons claimed
    * all of it, leaving the action nav 8px wide with the trigger outside it.
    *
+   * Swept rather than sampled, because what makes this work is a pair of
+   * container-width thresholds in two stylesheets and a single sample would let
+   * one drift. One test rather than one per width: the setup is identical and
+   * booting the fixture three times buys nothing.
+   *
    * Stops at 720 on purpose. Under about 700 the panel keeps ~270px of a
    * shrinking content area (`_handleWindowResize` stops clamping once half the
    * content area falls under `MIN_WIDTH`), so the header box itself drops below
-   * one button — 71px at a 601px window. No demotion or pinning can put a 40px
-   * control inside a 71px header; that is a right-panel sizing bug, not this
-   * row's, and asserting it here would only pin the wrong component.
-   *
-   * Swept rather than sampled: the thresholds that make this work are container
-   * widths in two stylesheets, and a single sample would let one drift.
+   * one button — 71px at a 601px window. No demotion or placement can put a
+   * 40px control inside a 71px header; that is right-panel sizing, not this
+   * row, and asserting it here would pin the wrong component.
    */
-  for (const width of [900, 800, 720]) {
-    test(`keeps the overflow trigger reachable at ${width}px with a panel open`, async ({
-      page,
-      workViewPage,
-    }) => {
-      await workViewPage.waitForTaskList();
-      await page.setViewportSize({ width: 1100, height: 860 });
-      await openNotesPanel(page);
+  test('keeps the overflow trigger reachable as the window narrows', async ({
+    page,
+    workViewPage,
+  }) => {
+    await workViewPage.waitForTaskList();
+    await page.setViewportSize({ width: 1100, height: 860 });
+    await openNotesPanel(page);
 
+    for (const width of [900, 800, 720]) {
       await page.setViewportSize({ width, height: 860 });
       await expectTriggerInView(page);
-    });
-  }
+    }
+  });
 
   /**
    * The title's roomier floor is keyed to the header's width, but the header IS

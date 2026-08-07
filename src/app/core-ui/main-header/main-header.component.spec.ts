@@ -175,18 +175,19 @@ describe('MainHeaderComponent layout', () => {
     }).compileComponents();
   });
 
-  // The scroll floor only keeps a button reachable if it is reachable at the
-  // scroll position the user is actually left at. The trigger used to be the
-  // row's last child, so at `scrollLeft: 0` -- where the row starts, and where
-  // it stays, because the floor hides the scrollbar -- it was the one button
-  // outside the scrollport, and it is the only route to everything demoted.
-  // Now it sits outside the scrolling box entirely.
-  it('keeps the overflow trigger in view at rest while the row scrolls (#9480)', () => {
+  // The row is narrower than its pinned actions, so the floor is engaged and
+  // the actions scroll. Everything asserted here is about the one button that
+  // must survive that: at `scrollLeft: 0` -- where the row rests, because the
+  // floor hides the scrollbar -- the trigger used to be the last child and so
+  // the one button outside the scrollport, and it is the only route to
+  // everything demoted. It now sits outside the scrolling box entirely.
+  it('keeps the whole overflow trigger beside the scrolling row, not over it', () => {
     const fixture = TestBed.createComponent(PinnedOverflowHostComponent);
     document.body.appendChild(fixture.nativeElement);
     try {
       fixture.detectChanges();
 
+      const wrapper = fixture.nativeElement.querySelector('.wrapper') as HTMLElement;
       const nav = fixture.nativeElement.querySelector('.action-nav-right') as HTMLElement;
       const scroller = fixture.nativeElement.querySelector(
         '.action-nav-scroll',
@@ -195,42 +196,50 @@ describe('MainHeaderComponent layout', () => {
         '.header-overflow-btn',
       ) as HTMLElement;
 
-      // Precondition: the row genuinely overflows, so the trigger is not
-      // trivially in view.
+      // Precondition: the row genuinely overflows, so none of this is
+      // trivially true.
       expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
       expect(scroller.scrollLeft).toBe(0);
 
+      // The nav stays inside the clip edge rather than spilling past it.
+      expect(nav.getBoundingClientRect().right).toBeLessThanOrEqual(
+        wrapper.getBoundingClientRect().right + 0.5,
+      );
+
+      // The whole trigger is inside the nav, at rest -- not a sliver of one.
       const navRect = nav.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
       expect(triggerRect.right).toBeLessThanOrEqual(navRect.right + 0.5);
       expect(triggerRect.left).toBeGreaterThanOrEqual(navRect.left - 0.5);
-      // The whole button, not a sliver of one.
       expect(triggerRect.width).toBeGreaterThanOrEqual(40);
+
+      // ...and it earns that by standing beside the scrolling region, not on
+      // top of it: the two boxes are disjoint.
+      expect(triggerRect.left).toBeGreaterThanOrEqual(
+        scroller.getBoundingClientRect().right - 0.5,
+      );
+
+      // The actions it displaced are still reachable by scrolling.
+      scroller.scrollLeft = scroller.scrollWidth;
+      expect(scroller.scrollLeft).toBeGreaterThan(0);
     } finally {
       document.body.removeChild(fixture.nativeElement);
     }
   });
 
-  // The trigger must not solve its own visibility by covering its neighbours:
-  // it is a sibling of the scrolling box, so the actions scroll beside it, not
-  // underneath it.
-  it('never paints the overflow trigger over the actions beside it', () => {
-    const fixture = TestBed.createComponent(PinnedOverflowHostComponent);
+  // `page-title` sizes its floor with `@container main-header (...)`, and the
+  // container is declared in a different file. Nothing links the two but the
+  // name, and if it were dropped those rules would stop matching silently --
+  // the title would keep the phone floor everywhere and the row would demote
+  // earlier than it needs to, with no test failing on the wiring itself.
+  it('declares the container the title sizes against', () => {
+    const fixture = TestBed.createComponent(WindowControlsHostComponent);
     document.body.appendChild(fixture.nativeElement);
     try {
       fixture.detectChanges();
-
-      const scroller = fixture.nativeElement.querySelector(
-        '.action-nav-scroll',
-      ) as HTMLElement;
-      const trigger = fixture.nativeElement.querySelector(
-        '.header-overflow-btn',
-      ) as HTMLElement;
-
-      const scrollerRect = scroller.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
-      // Disjoint boxes: the trigger starts where the scrolling region ends.
-      expect(triggerRect.left).toBeGreaterThanOrEqual(scrollerRect.right - 0.5);
+      const style = getComputedStyle(fixture.nativeElement as HTMLElement);
+      expect(style.containerName).toBe('main-header');
+      expect(style.containerType).toBe('inline-size');
     } finally {
       document.body.removeChild(fixture.nativeElement);
     }
