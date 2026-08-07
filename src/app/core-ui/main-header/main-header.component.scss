@@ -6,6 +6,12 @@
   display: block;
   position: relative;
   user-select: none;
+  // The row's own width is what its contents have to fit into — not the
+  // window's, which the side nav and the right panel both narrow away from
+  // (#9480). Named so `page-title` can size its floor against this box and not
+  // against the `main-content` container declared on `.route-wrapper`.
+  // `inline-size` only: the header's height still comes from its contents.
+  container: main-header / inline-size;
   --header-nav-button-gap: var(--s-half);
   --header-action-group-gap: var(--s);
   --header-button-size: 40px;
@@ -33,6 +39,19 @@
   .wrapper {
     overflow-x: clip;
   }
+}
+
+// ...but the controls sit in the top-right corner of the WINDOW, and with the
+// right panel open that corner belongs to the panel, not the header. Reserving
+// room for them here then costs the action row ~140px it does not owe — enough,
+// measured against the real CSS, to squeeze the whole row down to a few pixels
+// and take every header action with it, overflow trigger included. The panel's
+// own minimum width (250px, RIGHT_PANEL_CONFIG.MIN_WIDTH) is wider than the
+// entire overlay band, so when it is open the header never reaches the controls.
+:host-context(.isNoMac.isObsidianStyleHeader.isElectron):host-context(
+  right-panel.isOpen
+) {
+  padding-right: 0;
 }
 
 :host-context(.isMac.isElectron),
@@ -231,6 +250,36 @@ button.isActive2 {
 
       &::-webkit-scrollbar {
         display: none;
+      }
+
+      // The trigger is the last child of the row, so at `scrollLeft: 0` — with
+      // the scrollbar hidden above — it is exactly the button that sits outside
+      // the scrollport, and it is the only route to everything already demoted.
+      // Losing it loses the actions twice over. Pin it to the scrollport's
+      // inline end so the row scrolls *under* it instead of past it; that
+      // motion is also the only affordance left saying the row scrolls at all.
+      .header-overflow-btn {
+        position: sticky;
+        inset-inline-end: 0;
+        z-index: 1;
+
+        // Opaque backdrop, or a button sliding underneath reads as a second
+        // icon stacked on the trigger. A rectangle covering the row's full
+        // height (the negative block insets cancel the bleed padding above),
+        // not the button's own round background, which would read as a toggled
+        // state. `::after`, not `::before`: Material draws the focus ring there,
+        // and `z-index: -1` keeps this behind both the glyph and the conflict
+        // badge. `var(--bg)` is the surface behind the header; on a theme with a
+        // background image it shows as a small chip, which is the cost of the
+        // trigger staying reachable in a state that is already degraded.
+        &::after {
+          content: '';
+          position: absolute;
+          inset-block: -8px;
+          inset-inline: 0;
+          background: var(--bg);
+          z-index: -1;
+        }
       }
     }
   }

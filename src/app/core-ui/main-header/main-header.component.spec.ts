@@ -139,11 +139,85 @@ class HeaderLayoutHostComponent {
 })
 class PinnedOverflowHostComponent {}
 
+// The Electron custom-title-bar reserve. `main-header` keeps the window
+// controls clear by padding its own right edge -- but the controls sit in the
+// top-right corner of the WINDOW, and with the right panel open that corner
+// belongs to the panel. Reserving there anyway cost the action row ~140px it
+// did not owe, which measured out at a nav 8px wide: every header action gone,
+// overflow trigger included.
+//
+// `:host-context` resolves against real ancestors, so the host is mounted
+// inside a `<right-panel>` the test toggles `isOpen` on, exactly as
+// RightPanelComponent's own host binding does.
+@Component({
+  standalone: true,
+  styleUrls: ['./main-header.component.scss'],
+  template: `<div class="wrapper"></div>`,
+})
+class WindowControlsHostComponent {}
+
+const WINDOW_CONTROL_BODY_CLASSES = ['isElectron', 'isNoMac', 'isObsidianStyleHeader'];
+
 describe('MainHeaderComponent layout', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [HeaderLayoutHostComponent, PinnedOverflowHostComponent],
+      imports: [
+        HeaderLayoutHostComponent,
+        PinnedOverflowHostComponent,
+        WindowControlsHostComponent,
+      ],
     }).compileComponents();
+  });
+
+  // The scroll floor only keeps a button reachable if it is reachable at the
+  // scroll position the user is actually left at. The trigger is the row's last
+  // child, so at `scrollLeft: 0` -- where the row starts, and where it stays,
+  // because the floor hides the scrollbar -- it was the one button outside the
+  // scrollport, and it is the only route to everything already demoted.
+  it('keeps the overflow trigger in view at rest while the row scrolls (#9480)', () => {
+    const fixture = TestBed.createComponent(PinnedOverflowHostComponent);
+    document.body.appendChild(fixture.nativeElement);
+    try {
+      fixture.detectChanges();
+
+      const nav = fixture.nativeElement.querySelector('.action-nav-right') as HTMLElement;
+      const trigger = fixture.nativeElement.querySelector(
+        '.header-overflow-btn',
+      ) as HTMLElement;
+
+      // Precondition: the row genuinely overflows, so the trigger is not
+      // trivially in view.
+      expect(nav.scrollWidth).toBeGreaterThan(nav.clientWidth);
+      expect(nav.scrollLeft).toBe(0);
+
+      const navRect = nav.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      expect(triggerRect.right).toBeLessThanOrEqual(navRect.right + 0.5);
+      expect(triggerRect.left).toBeGreaterThanOrEqual(navRect.left - 0.5);
+    } finally {
+      document.body.removeChild(fixture.nativeElement);
+    }
+  });
+
+  it('drops the window-controls reserve while the right panel is open', () => {
+    const panel = document.createElement('right-panel');
+    document.body.appendChild(panel);
+    document.body.classList.add(...WINDOW_CONTROL_BODY_CLASSES);
+    const fixture = TestBed.createComponent(WindowControlsHostComponent);
+    panel.appendChild(fixture.nativeElement);
+    try {
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+
+      // Panel closed: the controls are above the header, so the reserve stands.
+      expect(parseFloat(getComputedStyle(host).paddingRight)).toBeGreaterThan(0);
+
+      panel.classList.add('isOpen');
+      expect(parseFloat(getComputedStyle(host).paddingRight)).toBe(0);
+    } finally {
+      document.body.classList.remove(...WINDOW_CONTROL_BODY_CLASSES);
+      document.body.removeChild(panel);
+    }
   });
 
   it('keeps pinned actions reachable when even they do not fit (#9480)', () => {

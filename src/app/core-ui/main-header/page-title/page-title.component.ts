@@ -151,6 +151,20 @@ import { KeyboardConfig } from '@sp/keyboard-config';
         @media (min-width: 600px) {
           padding-left: 0;
           padding-right: var(--s);
+        }
+
+        /* The roomier floor, but only where the row can afford it — and the row
+           is the HEADER, not the window. main-header sits inside .main-content,
+           which the in-flow side nav and the right panel both narrow (#9480), so
+           a viewport query handed a 420px header the same 160px floor as a
+           1500px one: with .page-title-actions (~92px incl. margins) and the
+           pinned play/add/focus/overflow buttons (~200px) the row was
+           over-subscribed before a single action was placed, and the action nav
+           was left a handful of pixels wide with every button — the overflow
+           trigger included — outside it. 500px is that arithmetic plus the
+           wrapper's own padding. Below it the name ellipsizes instead, which is
+           the priority this row already states elsewhere (#7477). */
+        @container main-header (min-width: 500px) {
           min-width: 160px;
         }
 

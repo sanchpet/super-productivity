@@ -593,11 +593,18 @@ export class MainHeaderComponent implements OnDestroy {
     const title = wrapper.querySelector('.page-title') as HTMLElement | null;
     const titleMinW = title ? parseFloat(getComputedStyle(title).minWidth) || 0 : 0;
     // The title's own action buttons do not shrink either, so they are owed in
-    // full — measured, because which of them render varies by breakpoint.
+    // full — measured, because which of them render varies by breakpoint, and
+    // measured with their margins, because that box carries
+    // `margin-left: -8px; margin-right: 16px` and a rect stops at the border
+    // box. The missing 8px is not slop: with the right panel open at a 1100px
+    // window the balance lands at +4 without it and -4 with it, so the fit
+    // called it a fit while the row overflowed by 4px — and what hangs over the
+    // clip edge is the overflow trigger itself, the nav's last child and the
+    // only route to everything already demoted.
     const titleActions = wrapper.querySelector(
       '.page-title-actions',
     ) as HTMLElement | null;
-    const titleActionsW = titleActions ? titleActions.getBoundingClientRect().width : 0;
+    const titleActionsW = titleActions ? this._outerWidth(titleActions) : 0;
     const free = contentW - this._intrinsicNavWidth(nav) - titleMinW - titleActionsW;
 
     const ids = this._demotableIds();
@@ -662,6 +669,16 @@ export class MainHeaderComponent implements OnDestroy {
       // floor is the only thing left that keeps the buttons reachable.
       this.needsScrollFloor.set(true);
     }
+  }
+
+  /** Border-box width plus horizontal margins — what the row actually owes. */
+  private _outerWidth(el: HTMLElement): number {
+    const s = getComputedStyle(el);
+    return (
+      el.getBoundingClientRect().width +
+      (parseFloat(s.marginLeft) || 0) +
+      (parseFloat(s.marginRight) || 0)
+    );
   }
 
   /**
