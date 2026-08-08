@@ -103,9 +103,16 @@ export class HeaderOverflowService {
   );
 
   /**
-   * Add-task, the panel buttons and the plugin side-panel buttons are absent on
-   * mobile rather than demoted: the bottom nav owns them there, via its FAB and
-   * its panels menu. That is a placement rule, not a question of width.
+   * Add-task and the panel buttons are absent on mobile rather than demoted: the
+   * bottom nav owns them there, via its FAB and its panels menu. That is a
+   * placement rule, not a question of width.
+   *
+   * Plugin side-panel buttons are NOT in that list, though the nav's panels menu
+   * lists them too. Zeroing a slot means "not configured", so it was dropped
+   * rather than demoted, and between ~570px and 404px the plugin buttons simply
+   * left the header with no trigger to say anything had moved. Dropping is for
+   * actions that do not exist; an action that exists and does not fit gets
+   * demoted, which is the only vocabulary this row has for saying so.
    */
   private readonly _ownedByBottomNav = this._layout.isShowMobileBottomNav;
 
@@ -129,7 +136,7 @@ export class HeaderOverflowService {
           this._plugins.headerButtons().length +
           this._plugins.workContextHeaderButtons().length,
         userProfile: af.isEnableUserProfiles && this._profiles.isInitialized() ? 1 : 0,
-        sidePanelBtns: mobile ? 0 : this._plugins.sidePanelButtons().length,
+        sidePanelBtns: this._plugins.sidePanelButtons().length,
         panelButtons: mobile ? 0 : desktopPanelButtonCount(af),
         counters: this._enabledCounters().filter((c) => !c.isHideButton).length,
         sync: af.isSyncIconEnabled ? 1 : 0,

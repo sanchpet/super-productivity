@@ -559,6 +559,7 @@ describe('MainHeaderComponent focus button visibility', () => {
   // is how a demotable slot appears at the *head* of the list while the bar is
   // already collapsed.
   let pluginHeaderButtons = signal<unknown[]>([]);
+  let pluginSidePanelButtons = signal<unknown[]>([]);
 
   const configureTestBed = (): void => {
     const cfg = {
@@ -594,7 +595,7 @@ describe('MainHeaderComponent focus button visibility', () => {
           useValue: {
             headerButtons: pluginHeaderButtons,
             workContextHeaderButtons: signal([]),
-            sidePanelButtons: signal([]),
+            sidePanelButtons: pluginSidePanelButtons,
           },
         },
         {
@@ -694,6 +695,7 @@ describe('MainHeaderComponent focus button visibility', () => {
     enabledSimpleCounters = [];
     isAllDataLoaded = true;
     pluginHeaderButtons = signal<unknown[]>([]);
+    pluginSidePanelButtons = signal<unknown[]>([]);
   });
 
   afterEach(() => {
@@ -950,6 +952,27 @@ describe('MainHeaderComponent focus button visibility', () => {
 
     expect(host.querySelector('[data-slot="sync"]')).toBeTruthy();
     expect(host.querySelector('.header-overflow-btn')).toBeFalsy();
+  });
+
+  it('keeps plugin side-panel buttons in the header while the bottom nav is up', async () => {
+    // The slot was zeroed whenever the bottom nav was up, on the grounds that
+    // the nav's panels menu owns it. The menu does list these buttons -- but
+    // zero means "not configured", so the slot was DROPPED rather than demoted:
+    // between ~570px and 404px the plugin buttons left the header and no
+    // trigger appeared to say anything had moved. Demoting is the whole
+    // vocabulary this feature has for "does not fit"; dropping is for actions
+    // that do not exist.
+    const btn = { label: 'x', icon: 'x', onClick: () => {} };
+    isXs = signal(true);
+    pluginSidePanelButtons = signal<unknown[]>([btn]);
+
+    const host = await mountAtWidth(404);
+
+    const isInline = !!host.querySelector('[data-slot="sidePanelBtns"]');
+    const isDemoted = !!host.querySelector(
+      '.header-overflow-panel plugin-side-panel-btns',
+    );
+    expect(isInline || isDemoted).toBe(true);
   });
 
   it('re-fits when a slot grows without changing which slots exist (#9480)', async () => {
