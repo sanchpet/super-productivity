@@ -102,14 +102,13 @@ test.describe('main header overflow with the right panel', () => {
    * one drift. One test rather than one per width: the setup is identical and
    * booting the fixture three times buys nothing.
    *
-   * Stops at 800 on purpose. Below that the header's width stops being a
-   * function of the window: the right panel only re-clamps itself inside a
-   * throttled, double-rAF resize handler and gives up entirely once half the
-   * content area falls under its own `MIN_WIDTH`, so under rapid resizes it
-   * keeps ~320px of a shrinking row and the header lands anywhere from 190px to
-   * 140px. At 140px no demotion or placement can seat a 40px control beside the
-   * title's frame and its buttons. That is right-panel sizing, not this row —
-   * asserting it here would pin the wrong component and flake doing it.
+   * Stops at 650. Below that `.page-title-actions` is the last thing in the row
+   * that never yields -- 92px of a 148px content box -- so the trigger ends up
+   * ~4px clipped: still clickable, not fully seated. Hiding those buttons would
+   * buy the last 40px of window at the cost of stranding the one control in
+   * that box with no other route ("Open in Plainspace"), which is a worse
+   * trade than a clipped edge at a window size where the side panel is one
+   * pixel from becoming a bottom sheet anyway.
    */
   test('keeps the overflow trigger reachable as the window narrows', async ({
     page,
@@ -119,7 +118,7 @@ test.describe('main header overflow with the right panel', () => {
     await page.setViewportSize({ width: 1000, height: 860 });
     await openNotesPanel(page);
 
-    for (const width of [900, 800]) {
+    for (const width of [900, 800, 720, 650]) {
       await page.setViewportSize({ width, height: 860 });
       await expectTriggerInView(page);
     }
