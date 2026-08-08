@@ -76,6 +76,7 @@ export class HeaderOverflowService {
   });
 
   private readonly _titleActionCount = signal<Signal<number>>(signal(0));
+  private readonly _titleTextWidth = signal<Signal<number>>(signal(0));
 
   /**
    * How many buttons `page-title` renders beside the title — bound once, as a
@@ -89,6 +90,16 @@ export class HeaderOverflowService {
    */
   bindTitleActionCount(count: Signal<number>): void {
     this._titleActionCount.set(count);
+  }
+
+  /**
+   * How wide the title's name wants to be, from the component that renders it.
+   * Handed over as a signal for the same reason as the count above: copying the
+   * value through an effect would fit the row once against the old name and
+   * again a frame later.
+   */
+  bindTitleTextWidth(width: Signal<number>): void {
+    this._titleTextWidth.set(width);
   }
 
   /**
@@ -184,6 +195,13 @@ export class HeaderOverflowService {
    * (`flex-shrink: 999`, `min-width: 0`), but a flex item never shrinks past
    * its own padding, and its buttons are `flex: 0 0 auto` and never shrink at
    * all.
+   *
+   * Plus enough of the name to read. That term is what stops the row from
+   * spending the title's last pixel on one more action: with the padding and the
+   * buttons as the only reserve, an 800px window kept seven buttons inline and
+   * left a 320px project name 70px of box. Capped at the name's own width, so a
+   * short name asks for nothing it would not fill — the failure of the flat
+   * floor this replaces.
    */
   private _titleReserve(t: HeaderTokens): number {
     if (!this._isDataLoaded()) {
@@ -192,7 +210,8 @@ export class HeaderOverflowService {
     const buttons = this._titleActionCount()();
     const actions =
       buttons > 0 ? runWidth(buttons, t.btn, t.titleActionGap) + t.titleActionsMargin : 0;
-    return t.titlePadding + actions;
+    const name = Math.min(this._titleTextWidth()(), t.titleTextMin);
+    return t.titlePadding + actions + name;
   }
 
   readonly demoted = computed<ReadonlySet<DemotableId>>(

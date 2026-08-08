@@ -18,5 +18,6 @@ export const readHeaderTokens = (host: HTMLElement): HeaderTokens => {
     titlePadding:
       px(s, '--header-title-padding-inline-start') +
       px(s, '--header-title-padding-inline-end'),
+    titleTextMin: px(s, '--header-title-text-min'),
   };
 };

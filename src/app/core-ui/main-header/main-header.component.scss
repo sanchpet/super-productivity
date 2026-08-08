@@ -34,6 +34,19 @@
   // silently zero to anything measuring it.
   --header-title-actions-inset: var(--s);
   --header-title-actions-gutter: var(--s2);
+  // How much of the title's NAME the row keeps before it starts demoting
+  // actions, capped at what the name actually measures. Nothing enforces it in
+  // CSS -- the title box still hugs its content (`min-width: 0` in
+  // page-title.component), so a short name reserves only its own width and the
+  // buttons still sit directly beside it. It bounds the fit, not the layout.
+  //
+  // Without it the fit owed the title nothing at all and spent every pixel on
+  // actions: measured against a 320px project name, an 800px window kept all
+  // seven buttons inline and left the name 70px, and a 600px window rendered it
+  // 2px wide. A flat floor is what this replaces -- that padded every short
+  // title with dead box (#9480) -- so the cap is a ceiling on the reserve, and
+  // the name's own width is the other half of the `min()`.
+  --header-title-text-min: 120px;
 
   @include mq(xs) {
     --header-action-group-gap: var(--s2);

@@ -10,6 +10,7 @@ const TOKENS: HeaderTokens = {
   titleActionGap: 2,
   titleActionsMargin: 8,
   titlePadding: 8,
+  titleTextMin: 120,
 };
 
 const input = (over: Partial<FitInput> = {}): FitInput => ({

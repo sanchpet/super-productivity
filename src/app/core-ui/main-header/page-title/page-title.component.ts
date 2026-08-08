@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  afterRenderEffect,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { MatRipple } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -56,7 +65,11 @@ import { KeyboardConfig } from '@sp/keyboard-config';
             >{{ contextIcon() }}</mat-icon
           >
         }
-        <span class="page-title-text">{{ displayTitle() }}</span>
+        <span
+          class="page-title-text"
+          #titleText
+          >{{ displayTitle() }}</span
+        >
       </div>
       @if (!isXxxs() && !isSpecialSection()) {
         <div class="page-title-actions">
@@ -396,6 +409,37 @@ export class PageTitleComponent {
    * against the rendered DOM, because a count that silently disagrees with its
    * template is the failure mode #9480 kept hitting.
    */
+  /**
+   * How wide the title's name would be if nothing squeezed it.
+   *
+   * The one measurement in this feature, and the only honest way to get this
+   * number: the name's width is a function of the string, the font and the
+   * locale, none of which arithmetic over CSS tokens can reach.
+   *
+   * It does not feed back into what it decides, which is what keeps the fit a
+   * `computed()`. `.page-title-text` is `white-space: nowrap` with
+   * `overflow: hidden`, so its `scrollWidth` is the width of the whole line no
+   * matter how narrow the box around it has been squeezed — measured across
+   * 1400px down to 404px, a 320px name reported 320 at every width while its
+   * `clientWidth` fell to 2. It has no `flex-grow` either, so the box never
+   * outgrows the line and `scrollWidth` never reports the box back instead.
+   */
+  readonly naturalTextWidth = signal(0);
+
+  private readonly _titleText = viewChild<ElementRef<HTMLElement>>('titleText');
+
+  /**
+   * Re-measured after render whenever the name changes — a project switch moves
+   * this by hundreds of pixels without the window moving at all, so a resize is
+   * not what it can wait for.
+   */
+  private readonly _measureTitle = afterRenderEffect(() => {
+    // Read as a dependency: this effect exists to follow the name.
+    this.displayTitle();
+    const el = this._titleText()?.nativeElement;
+    this.naturalTextWidth.set(el ? el.scrollWidth : 0);
+  });
+
   readonly actionButtonCount = computed(() => {
     // The outermost `@if` too: with no work context this component renders
     // nothing at all, and a count that forgot it would have the header

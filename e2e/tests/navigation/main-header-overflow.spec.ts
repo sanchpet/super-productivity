@@ -161,4 +161,61 @@ test.describe('main header overflow with the right panel', () => {
       }).toPass({ timeout: 10000 });
     }
   });
+
+  /**
+   * The other side of that trade. Sizing the title by its name means the fit
+   * owes it nothing, and with nothing owed the row spent every pixel on actions:
+   * at an 800px window a 320px project name was squeezed to 70px while all seven
+   * buttons stayed inline, and at 600px it rendered 2px wide. The name is the
+   * one thing in the row that says which project you are looking at, so it
+   * outranks the seventh icon.
+   *
+   * `--header-title-text-min` is the ceiling on that reserve, capped again at
+   * what the name measures — so this asserts the guarantee, not the constant:
+   * a name longer than the cap keeps at least the cap, and one shorter than it
+   * keeps all of itself. 800px is the width the old model failed at while still
+   * having actions left to demote; below ~700px there is nothing left to give
+   * up and the name legitimately shrinks again.
+   */
+  test('keeps enough of a long project name to read it', async ({
+    page,
+    workViewPage,
+    projectPage,
+  }) => {
+    await workViewPage.waitForTaskList();
+    await projectPage.createProject('Quarterly Planning And Review');
+    await projectPage.navigateToProjectByName('Quarterly Planning And Review');
+
+    await page.setViewportSize({ width: 800, height: 860 });
+
+    await expect(async () => {
+      const title = await page.evaluate(() => {
+        const el = document.querySelector('.page-title-text') as HTMLElement | null;
+        const host = document.querySelector('main-header') as HTMLElement | null;
+        if (!el || !host) {
+          return null;
+        }
+        return {
+          shown: el.clientWidth,
+          // Unsqueezed width of the whole line: the box is `nowrap` and clipped,
+          // so this is independent of how narrow it has been made.
+          natural: el.scrollWidth,
+          cap: parseFloat(
+            getComputedStyle(host).getPropertyValue('--header-title-text-min'),
+          ),
+        };
+      });
+      expect(title, 'no page title rendered').not.toBeNull();
+      const { shown, natural, cap } = title!;
+      expect(
+        natural,
+        'the name should be longer than the cap for this test',
+      ).toBeGreaterThan(cap);
+      // 1px of slop for the sub-pixel widths a fractional layout produces.
+      expect(
+        shown,
+        `only ${shown}px of a ${natural}px name survived`,
+      ).toBeGreaterThanOrEqual(cap - 1);
+    }).toPass({ timeout: 10000 });
+  });
 });

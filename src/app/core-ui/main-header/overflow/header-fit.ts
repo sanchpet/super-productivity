@@ -36,6 +36,12 @@ export interface HeaderTokens {
    * whatever `min-width` says.
    */
   readonly titlePadding: number;
+  /**
+   * The most of the title's name the fit will hold room for. Paired with the
+   * name's measured width in a `min()`, so it is a ceiling on the reserve rather
+   * than a floor under the box: a name shorter than this reserves only itself.
+   */
+  readonly titleTextMin: number;
 }
 
 /**

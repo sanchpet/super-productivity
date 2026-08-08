@@ -285,6 +285,9 @@ export class MainHeaderComponent implements OnDestroy {
     this.overflow.bindTitleActionCount(
       computed(() => this._pageTitle()?.actionButtonCount() ?? 0),
     );
+    this.overflow.bindTitleTextWidth(
+      computed(() => this._pageTitle()?.naturalTextWidth() ?? 0),
+    );
 
     // The row is the header's own element, so the header is what hands it over.
     afterNextRender(() => this.overflow.observe(this._wrapper().nativeElement));
