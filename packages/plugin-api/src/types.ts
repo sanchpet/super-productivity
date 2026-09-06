@@ -723,6 +723,12 @@ export interface PluginAPI {
     updates: PluginTaskRepeatCfgData,
   ): Promise<void>;
 
+  /**
+   * Delete a repeat config. The tasks it already created stay, but stop
+   * repeating. Requires `"deleteTaskRepeatCfg"` in the manifest `permissions`.
+   */
+  deleteTaskRepeatCfg(taskRepeatCfgId: string): Promise<void>;
+
   // task ordering
   reorderTasks(
     taskIds: string[],
