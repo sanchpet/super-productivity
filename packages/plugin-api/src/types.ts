@@ -891,7 +891,10 @@ export interface PluginTaskRepeatCfgData {
    * the reminder offset from global config.
    */
   startTime?: string;
-  /** WEEKLY: at least one weekday is required, the rest default to false. */
+  /**
+   * WEEKLY: at least one weekday is required, the rest default to false.
+   * Setting a weekday true on any other cycle is rejected.
+   */
   monday?: boolean;
   tuesday?: boolean;
   wednesday?: boolean;

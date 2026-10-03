@@ -196,6 +196,15 @@ const isWeeklyWithoutWeekday = (cfg: Partial<TaskRepeatCfgCopy>): boolean =>
   cfg.repeatCycle === 'WEEKLY' &&
   !PLUGIN_REPEAT_WEEKDAYS.some((day) => cfg[day] === true);
 
+// Only the WEEKLY cycle reads weekday flags. On any other cycle a flag the
+// caller sets is stored and ignored, so `{ saturday: true }` without a cycle
+// would silently repeat daily.
+const setsWeekdayOffWeeklyCycle = (
+  repeatCycle: TaskRepeatCfgCopy['repeatCycle'],
+  input: PluginTaskRepeatCfgData,
+): boolean =>
+  repeatCycle !== 'WEEKLY' && PLUGIN_REPEAT_WEEKDAYS.some((day) => input[day] === true);
+
 @Injectable({
   providedIn: 'root',
 })
@@ -1276,7 +1285,10 @@ export class PluginBridgeService implements OnDestroy {
       (acc, day) => ({ ...acc, [day]: cfg[day] ?? false }),
       {} as Record<(typeof PLUGIN_REPEAT_WEEKDAYS)[number], boolean>,
     );
-    if (isWeeklyWithoutWeekday({ repeatCycle, ...weekdays })) {
+    if (
+      isWeeklyWithoutWeekday({ repeatCycle, ...weekdays }) ||
+      setsWeekdayOffWeeklyCycle(repeatCycle, cfg)
+    ) {
       throw new Error(
         this._translateService.instant(T.PLUGINS.TASK_REPEAT_CFG_INVALID, {
           reason: 'weekday',
@@ -1385,8 +1397,13 @@ export class PluginBridgeService implements OnDestroy {
 
     // Validate the resulting config, not the patch: switching the cycle to
     // WEEKLY, or clearing the last remaining weekday, kills the recurrence
-    // with nothing to show for it.
-    if (isWeeklyWithoutWeekday({ ...existing, ...changes })) {
+    // with nothing to show for it. The off-cycle check looks at the patch
+    // only: configs made in the dialog keep the Mon-Fri mask on a DAILY cycle.
+    const merged = { ...existing, ...changes };
+    if (
+      isWeeklyWithoutWeekday(merged) ||
+      setsWeekdayOffWeeklyCycle(merged.repeatCycle, updates)
+    ) {
       throw new Error(
         this._translateService.instant(T.PLUGINS.TASK_REPEAT_CFG_INVALID, {
           reason: 'weekday',

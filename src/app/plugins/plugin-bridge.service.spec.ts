@@ -1356,6 +1356,26 @@ describe('PluginBridgeService - Task Repeat Cfg Methods', () => {
       expect(taskRepeatCfgServiceSpy.addTaskRepeatCfgToTask).not.toHaveBeenCalled();
     });
 
+    it('rejects a weekday flag without a cycle, which would repeat daily', async () => {
+      await expectAsync(
+        service.addTaskRepeatCfg('task-1', { saturday: true }),
+      ).toBeRejectedWithError(T.PLUGINS.TASK_REPEAT_CFG_INVALID);
+      expect(taskRepeatCfgServiceSpy.addTaskRepeatCfgToTask).not.toHaveBeenCalled();
+    });
+
+    it('rejects a weekday flag on a cycle that ignores weekdays', async () => {
+      await expectAsync(
+        service.addTaskRepeatCfg('task-1', { repeatCycle: 'MONTHLY', saturday: true }),
+      ).toBeRejectedWithError(T.PLUGINS.TASK_REPEAT_CFG_INVALID);
+      expect(taskRepeatCfgServiceSpy.addTaskRepeatCfgToTask).not.toHaveBeenCalled();
+    });
+
+    it('accepts weekday flags set false on a non-weekly cycle', async () => {
+      await service.addTaskRepeatCfg('task-1', { repeatCycle: 'DAILY', saturday: false });
+
+      expect(lastCfg().repeatCycle).toBe('DAILY');
+    });
+
     it('rejects a repeatEvery the dialog form would not accept', async () => {
       await expectAsync(
         service.addTaskRepeatCfg('task-1', { repeatCycle: 'DAILY', repeatEvery: 0 }),
@@ -1597,6 +1617,55 @@ describe('PluginBridgeService - Task Repeat Cfg Methods', () => {
         { monday: false },
         false,
       );
+    });
+
+    describe("on a daily config carrying the dialog's Mon-Fri mask", () => {
+      beforeEach(() => {
+        taskRepeatCfgServiceSpy.getTaskRepeatCfgByIdAllowUndefined$.and.returnValue(
+          of({
+            id: 'repeat-cfg-1',
+            quickSetting: 'DAILY',
+            repeatCycle: 'DAILY',
+            monday: true,
+            tuesday: true,
+            wednesday: true,
+            thursday: true,
+            friday: true,
+            saturday: false,
+            sunday: false,
+          } as unknown as TaskRepeatCfg),
+        );
+      });
+
+      it('rejects setting a weekday without switching to weekly', async () => {
+        await expectAsync(
+          service.updateTaskRepeatCfg('repeat-cfg-1', { saturday: true }),
+        ).toBeRejectedWithError(T.PLUGINS.TASK_REPEAT_CFG_INVALID);
+        expect(taskRepeatCfgServiceSpy.updateTaskRepeatCfg).not.toHaveBeenCalled();
+      });
+
+      it('accepts updates that set no weekday', async () => {
+        await service.updateTaskRepeatCfg('repeat-cfg-1', { isPaused: true });
+
+        expect(taskRepeatCfgServiceSpy.updateTaskRepeatCfg).toHaveBeenCalledOnceWith(
+          'repeat-cfg-1',
+          { isPaused: true },
+          false,
+        );
+      });
+
+      it('accepts a switch to weekly together with the days', async () => {
+        await service.updateTaskRepeatCfg('repeat-cfg-1', {
+          repeatCycle: 'WEEKLY',
+          saturday: true,
+        });
+
+        expect(taskRepeatCfgServiceSpy.updateTaskRepeatCfg).toHaveBeenCalledOnceWith(
+          'repeat-cfg-1',
+          { repeatCycle: 'WEEKLY', saturday: true },
+          false,
+        );
+      });
     });
 
     it('rejects an unknown config', async () => {
